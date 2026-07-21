@@ -1,7 +1,11 @@
 # PromptComplete
 
+[![CI](https://github.com/Amritha902/Amritha902/actions/workflows/ci.yml/badge.svg)](https://github.com/Amritha902/Amritha902/actions/workflows/ci.yml)
+
 **The prompt box, upgraded to an IDE — inline autocomplete, a live prompt-quality
 meter, one-click prompt compilation, and a local experiment lab. Claude-first.**
+
+![PromptComplete in action: ghost text, Tab accept, and the / scaffold palette](demo/shots/hero.gif)
 
 Typing a good prompt is the slowest part of using an AI assistant. Gmail has Smart
 Compose. Your editor has Copilot. The prompt box you type into every day has…
@@ -87,6 +91,19 @@ caught a real template-duplication bug that is now covered by the unit suite).
 | Ghost text | Personal model | `/` palette |
 |---|---|---|
 | ![ghost](demo/shots/1-ghost.png) | ![personal](demo/shots/3-personal.png) | ![palette](demo/shots/4-palette.png) |
+
+**The Intent Compiler**, before and after — a rough draft scoring **0** on the
+health ring becomes a structured prompt scoring **80** with one click. (In the
+demo the rewrite is a canned representative example; in the real extension this
+call goes to Claude Sonnet with your key.)
+
+| Draft: "fix my resume idk make it good" — health 0 | Compiled — health 80 |
+|---|---|
+| ![draft](demo/shots/6-draft.png) | ![compiled](demo/shots/7-compiled.png) |
+
+`node demo/record.mjs` regenerates the hero GIF — Playwright video → PNG
+frames → an animated GIF assembled by our own dependency-free GIF89a encoder
+([`tools/gif.mjs`](tools/gif.mjs): PNG decode, palette quantization, LZW).
 
 ## How it works
 

@@ -10,12 +10,31 @@
  *
  * Usage:  NODE_PATH=$(npm root -g) node demo/capture.mjs
  */
-// Resolve playwright from the global install (works without a local
-// node_modules; `npm i -D playwright` also works if you prefer local).
+// Resolve playwright: local node_modules first (CI), then the global install.
 import { createRequire } from "node:module";
-const { chromium } = createRequire(import.meta.url)(
-  process.env.PLAYWRIGHT_PATH || "/opt/node22/lib/node_modules/playwright"
-);
+import { existsSync } from "node:fs";
+const require_ = createRequire(import.meta.url);
+function loadPlaywright() {
+  for (const spec of [
+    process.env.PLAYWRIGHT_PATH,
+    "playwright",
+    "/opt/node22/lib/node_modules/playwright",
+  ]) {
+    if (!spec) continue;
+    try {
+      return require_(spec);
+    } catch (_) {
+      /* try next */
+    }
+  }
+  throw new Error("playwright not found — npm i playwright, or set PLAYWRIGHT_PATH");
+}
+const { chromium } = loadPlaywright();
+
+// Pre-provisioned browser if present (this sandbox); default download in CI.
+export const launchOpts = existsSync("/opt/pw-browsers/chromium")
+  ? { executablePath: "/opt/pw-browsers/chromium" }
+  : {};
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { mkdirSync } from "node:fs";
@@ -24,9 +43,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "shots");
 mkdirSync(outDir, { recursive: true });
 
-const browser = await chromium.launch({
-  executablePath: "/opt/pw-browsers/chromium",
-});
+const browser = await chromium.launch(launchOpts);
 const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
 await page.goto("file://" + join(here, "composer.html"));
 
@@ -84,10 +101,33 @@ await page.keyboard.type(
 );
 await page.waitForSelector(".pc-ring", { state: "visible", timeout: 5000 });
 const ring = page.locator(".pc-ring");
-await ring.hover();
-await page.waitForTimeout(400);
+await ring.click(); // opens the best-practice breakdown panel
+await page.waitForSelector(".pc-panel", { state: "visible", timeout: 5000 });
+await page.waitForTimeout(300);
 await page.screenshot({ path: join(outDir, "5-health.png") });
 console.log("health score:", JSON.stringify(await page.locator(".pc-ring-num").textContent()));
+await page.keyboard.press("Escape");
+
+// --- 6/7. Intent Compiler before/after -------------------------------------
+// (Demo harness returns a canned, representative rewrite — the real
+// extension calls Claude Sonnet here.)
+await clearComposer();
+await page.keyboard.type("fix my resume idk make it good", { delay: 30 });
+await page.waitForSelector(".pc-ring", { state: "visible", timeout: 5000 });
+await ring.click();
+await page.waitForSelector(".pc-panel", { state: "visible", timeout: 5000 });
+await page.waitForTimeout(300);
+await page.screenshot({ path: join(outDir, "6-draft.png") });
+console.log("draft health:", JSON.stringify(await page.locator(".pc-ring-num").textContent()));
+
+await page.click(".pc-compile");
+await page.waitForFunction(
+  () => document.querySelector(".input").innerText.includes("resume coach"),
+  { timeout: 5000 }
+);
+await page.waitForTimeout(500);
+await page.screenshot({ path: join(outDir, "7-compiled.png") });
+console.log("compiled health:", JSON.stringify(await page.locator(".pc-ring-num").textContent()));
 
 await browser.close();
 console.log("done → demo/shots/");

@@ -50,7 +50,23 @@
     },
     runtime: {
       lastError: null,
-      sendMessage: (_msg, cb) => {
+      sendMessage: (msg, cb) => {
+        // In the real extension pc:improve calls Claude (Sonnet) via the
+        // service worker. The demo returns a canned, representative rewrite
+        // so the Intent Compiler UX can be exercised offline.
+        if (msg && msg.type === "pc:improve") {
+          const canned =
+            "You are an experienced resume coach for early-career data scientists.\n\n" +
+            "Rewrite the resume summary below to be specific and achievement-led.\n\n" +
+            "<resume_summary>\n{{paste your current summary}}\n</resume_summary>\n\n" +
+            "Requirements:\n" +
+            "- Lead with measurable impact, not responsibilities\n" +
+            "- Keep it under 60 words, active voice\n" +
+            "- Mirror keywords from a data-science internship posting\n\n" +
+            "Return the rewritten summary, then a one-line note on the biggest change you made.";
+          setTimeout(() => cb({ ok: true, completion: canned }), 600);
+          return;
+        }
         if (cb) queueMicrotask(() => cb(null));
       },
       connect: () => ({
