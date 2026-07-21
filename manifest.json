@@ -22,7 +22,13 @@
         "https://chatgpt.com/*",
         "https://chat.openai.com/*"
       ],
-      "js": ["src/suggest.js", "src/content.js"],
+      "js": [
+        "src/templates.js",
+        "src/suggest.js",
+        "src/health.js",
+        "src/palette.js",
+        "src/content.js"
+      ],
       "css": ["src/overlay.css"],
       "run_at": "document_idle"
     }

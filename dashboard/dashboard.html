@@ -35,6 +35,27 @@
         </div>
       </section>
 
+      <section class="kpis value-kpis">
+        <div class="kpi">
+          <div class="kpi-value" id="charsSaved">—</div>
+          <div class="kpi-label">Keystrokes saved</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-value" id="timeSaved">—</div>
+          <div class="kpi-label">Typing time saved <span class="est">est.*</span></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-value" id="tokensCompleted">—</div>
+          <div class="kpi-label">Tokens auto-completed <span class="est">est.*</span></div>
+        </div>
+      </section>
+      <p class="footnote">
+        * Estimates: time saved assumes an average typing speed of 200
+        characters/minute (~40 WPM); tokens ≈ characters ÷ 4. Both derive from
+        one directly measured primitive — characters inserted by accepted
+        suggestions.
+      </p>
+
       <section class="panel">
         <h2>Acceptance rate over time</h2>
         <p class="hint">Daily acceptance rate for the last 14 days — your model getting better at predicting you.</p>
@@ -74,6 +95,22 @@
           <tbody></tbody>
         </table>
         <p class="empty" id="empty" hidden>Start typing prompts in Claude — your model builds itself as you go.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Prompt Lab — your experiment log</h2>
+        <p class="hint">
+          Every sent prompt logged like an ML experiment: size, health score, and
+          which best-practice dimensions were missing. No prompt text is stored — only structure.
+        </p>
+        <div class="coach" id="coach" hidden></div>
+        <table id="lab">
+          <thead>
+            <tr><th>When</th><th class="num">Words</th><th class="num">Health</th><th>Missing techniques</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty" id="lab-empty" hidden>Send a few prompts and your experiment log builds itself.</p>
       </section>
 
       <section class="panel data-api">

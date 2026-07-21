@@ -51,13 +51,22 @@
           <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off" />
         </label>
         <label class="field">
-          <span>Model</span>
+          <span>Autocomplete model</span>
           <select id="model">
             <option value="claude-haiku-4-5">Claude Haiku 4.5 — fastest (recommended)</option>
             <option value="claude-sonnet-5">Claude Sonnet 5 — balanced</option>
             <option value="claude-opus-4-8">Claude Opus 4.8 — most capable</option>
           </select>
-          <small>Haiku is recommended: autocomplete needs low latency, and it's the cheapest model.</small>
+          <small>Haiku is recommended: ghost text needs low latency, and it's the cheapest model.</small>
+        </label>
+        <label class="field">
+          <span>Compile model (⚡ Improve my prompt)</span>
+          <select id="improveModel">
+            <option value="claude-sonnet-5">Claude Sonnet 5 — recommended</option>
+            <option value="claude-haiku-4-5">Claude Haiku 4.5 — cheapest</option>
+            <option value="claude-opus-4-8">Claude Opus 4.8 — most capable</option>
+          </select>
+          <small>Compiling is a one-click action where quality beats latency — Sonnet is the sweet spot.</small>
         </label>
         <div class="actions">
           <button id="test">Test key</button>

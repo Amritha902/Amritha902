@@ -123,35 +123,48 @@
   // A word-level back-off model trained incrementally on the user's own
   // prompts, entirely on-device.
   //
-  //   Data:   counts C(w | h) for histories h of order 2 and 3.
-  //   Score:  P(w | h) = λ₃·P̂₃(w | h₃) + λ₂·P̂₂(w | h₂)
-  //           where P̂ₙ is the maximum-likelihood estimate at order n and the
-  //           λ's implement simple linear interpolation (Jelinek-Mercer
-  //           smoothing) so the trigram evidence dominates when present but
-  //           the bigram floor keeps predictions from vanishing on sparse
-  //           histories.
+  //   Data:   counts C(w | h) for histories h of order 2 and 3, plus
+  //           incrementally-maintained continuation counts N₁₊(·w) — the
+  //           number of DISTINCT histories each word has been seen to
+  //           complete — for the Kneser-Ney back-off distribution.
+  //   Score:  interpolated Kneser-Ney smoothing (Kneser & Ney 1995;
+  //           Chen & Goodman 1999) with absolute discount D:
+  //
+  //             P₃(w|h₃) = max(C₃(h₃,w)−D, 0)/C₃(h₃) + γ(h₃)·P₂(w|h₂)
+  //             P₂(w|h₂) = max(C₂(h₂,w)−D, 0)/C₂(h₂) + γ(h₂)·P_cont(w)
+  //             P_cont(w) = N₁₊(·w) / Σ_v N₁₊(·v)
+  //             γ(h)     = D · |distinct continuations of h| / C(h)
+  //
+  //           The continuation distribution is the KN insight: back off to
+  //           "how many contexts does this word complete?", not raw
+  //           frequency — the classic "San Francisco" fix ("Francisco" is
+  //           frequent but only ever follows "San", so it makes a poor
+  //           back-off candidate).
   //   Emit:   greedy decoding, one word at a time, but ONLY while the
-  //           interpolated probability clears CONFIDENCE_MIN and the winning
+  //           smoothed probability clears CONFIDENCE_MIN and the winning
   //           count clears SUPPORT_MIN — an autocomplete that is unsure
   //           should stay silent rather than guess (precision > recall:
   //           every bad ghost costs user trust).
   const HISTORY_KEY = "pc_ngrams";
+  const CONT_KEY = "pc_cont"; // continuation counts for Kneser-Ney back-off
   const MAX_NGRAMS = 4000;
-  const LAMBDA_3 = 0.7; // weight on the trigram estimate
-  const LAMBDA_2 = 0.3; // weight on the bigram estimate
-  const CONFIDENCE_MIN = 0.45; // interpolated P(w|h) below this → stop emitting
+  const KN_DISCOUNT = 0.75; // absolute discount D (standard value)
+  const CONFIDENCE_MIN = 0.45; // smoothed P(w|h) below this → stop emitting
   const SUPPORT_MIN = 2; // require the winning continuation seen ≥ this often
   const MAX_EMIT = 6; // cap the greedy rollout length
 
   let ngramCache = null;
+  let contCache = null; // { counts: {word: N₁₊(·w)}, pairs: Σ_v N₁₊(·v) }
 
   async function loadNgrams() {
     if (ngramCache) return ngramCache;
     try {
-      const data = await chrome.storage.local.get(HISTORY_KEY);
+      const data = await chrome.storage.local.get([HISTORY_KEY, CONT_KEY]);
       ngramCache = data[HISTORY_KEY] || {};
+      contCache = data[CONT_KEY] || { counts: {}, pairs: 0 };
     } catch (_) {
       ngramCache = {};
+      contCache = { counts: {}, pairs: 0 };
     }
     return ngramCache;
   }
@@ -210,11 +223,23 @@
     return records;
   }
 
-  /** Stage 4 — index: fold the chunked records into the count table. */
-  function index(grams, records) {
+  /**
+   * Stage 4 — index: fold the chunked records into the count table, and keep
+   * the Kneser-Ney continuation counts current: when a (history, word) pair
+   * is seen for the FIRST time at bigram order, that word now completes one
+   * more distinct context — an O(1) incremental update that spares us an
+   * O(table) scan at query time.
+   */
+  function index(grams, cont, records) {
     for (const { h, next } of records) {
       grams[h] = grams[h] || {};
+      const isNewPair = !grams[h][next];
       grams[h][next] = (grams[h][next] || 0) + 1;
+      if (isNewPair && h.indexOf(" ") === h.lastIndexOf(" ")) {
+        // exactly two words → bigram-order history
+        cont.counts[next] = (cont.counts[next] || 0) + 1;
+        cont.pairs += 1;
+      }
     }
     return grams;
   }
@@ -223,18 +248,21 @@
   async function learn(promptText) {
     if (!promptText || promptText.length < 8) return;
     const tokens = normalize(promptText);
-    const grams = index(await loadNgrams(), chunk(tokens, stemAll(tokens)));
+    await loadNgrams();
+    const grams = index(ngramCache, contCache, chunk(tokens, stemAll(tokens)));
 
     // Bounded model: evict oldest-inserted histories past the cap. JS objects
     // preserve insertion order, so this is FIFO eviction — cheap and adequate
-    // for a per-user model of this size.
+    // for a per-user model of this size. (Continuation counts are left as-is
+    // on eviction; they decay in influence as `pairs` grows and staying
+    // approximate keeps eviction O(evicted) rather than O(table).)
     const keys = Object.keys(grams);
     if (keys.length > MAX_NGRAMS) {
       for (const k of keys.slice(0, keys.length - MAX_NGRAMS)) delete grams[k];
     }
     ngramCache = grams;
     try {
-      await chrome.storage.local.set({ [HISTORY_KEY]: grams });
+      await chrome.storage.local.set({ [HISTORY_KEY]: grams, [CONT_KEY]: contCache });
     } catch (_) {
       /* storage full or unavailable — non-fatal */
     }
@@ -252,14 +280,36 @@
   }
 
   /**
-   * Score every candidate continuation of the current context with
-   * P(w|h) = λ₃·P̂₃ + λ₂·P̂₂ and return the argmax with its probability
-   * and raw support, or null when both orders are unseen.
+   * Interpolated Kneser-Ney scoring. For every candidate continuation of the
+   * current context, compute
+   *
+   *   P₂(w|h₂) = max(C₂−D,0)/C₂(h₂) + γ(h₂)·P_cont(w)
+   *   P₃(w|h₃) = max(C₃−D,0)/C₃(h₃) + γ(h₃)·P₂(w|h₂)
+   *
+   * and return the argmax with its probability and raw support, or null when
+   * both orders are unseen. O(k) in the candidate count — the continuation
+   * distribution was precomputed incrementally at index time.
    */
   function predictNext(grams, context) {
     const d3 = context.length >= 3 ? mle(grams, context.slice(-3).join(" ")) : null;
     const d2 = context.length >= 2 ? mle(grams, context.slice(-2).join(" ")) : null;
     if (!d3 && !d2) return null;
+
+    const D = KN_DISCOUNT;
+    const pCont = (w) =>
+      contCache && contCache.pairs > 0 ? (contCache.counts[w] || 0) / contCache.pairs : 0;
+
+    // Back-off weight γ(h): the probability mass freed by discounting.
+    const gamma = (d) => (d ? (D * Object.keys(d.counts).length) / d.total : 0);
+
+    const p2 = (w) => {
+      if (!d2) return pCont(w);
+      return Math.max((d2.counts[w] || 0) - D, 0) / d2.total + gamma(d2) * pCont(w);
+    };
+    const p3 = (w) => {
+      if (!d3) return p2(w);
+      return Math.max((d3.counts[w] || 0) - D, 0) / d3.total + gamma(d3) * p2(w);
+    };
 
     const candidates = new Set([
       ...(d3 ? Object.keys(d3.counts) : []),
@@ -268,9 +318,7 @@
 
     let best = null;
     for (const w of candidates) {
-      const p3 = d3 ? (d3.counts[w] || 0) / d3.total : 0;
-      const p2 = d2 ? (d2.counts[w] || 0) / d2.total : 0;
-      const p = LAMBDA_3 * p3 + LAMBDA_2 * p2;
+      const p = p3(w);
       const support = Math.max(d3 ? d3.counts[w] || 0 : 0, d2 ? d2.counts[w] || 0 : 0);
       if (!best || p > best.p) best = { w, p, support };
     }
@@ -299,51 +347,31 @@
     return out.length ? out.join(" ") : null;
   }
 
-  // --- AI suggestion (via background worker) -------------------------------
-  async function aiSuggestion(text, signal) {
-    return new Promise((resolve) => {
-      let settled = false;
-      const done = (v) => {
-        if (!settled) {
-          settled = true;
-          resolve(v);
-        }
-      };
-      if (signal) signal.addEventListener("abort", () => done(null), { once: true });
-      try {
-        chrome.runtime.sendMessage({ type: "pc:complete", text }, (resp) => {
-          if (chrome.runtime.lastError) return done(null);
-          done(resp && resp.ok ? resp.completion : null);
-        });
-      } catch (_) {
-        done(null);
-      }
-    });
+  // --- Public API ----------------------------------------------------------
+  // Tier order: personal model first (it knows *you*), then the regex
+  // fast-path over curated templates, then the vector-space IR fallback for
+  // paraphrased lead-ins. All LOCAL — the streaming AI tier lives in the
+  // content script (it needs the long-lived port); when an AI candidate
+  // arrives it is appended to this list for Alt+]/[ cycling.
+
+  /** All distinct local candidates, best tier first. */
+  async function getCandidates(text) {
+    if (!text || text.trim().length < 2) return [];
+    const out = [];
+    const push = (s) => {
+      if (s && !out.includes(s)) out.push(s);
+    };
+    const hist = await historySuggestion(text);
+    if (hist) push(" " + hist);
+    push(templateSuggestion(text));
+    push(vectorTemplateSuggestion(text));
+    return out;
   }
 
-  // --- Public API ----------------------------------------------------------
-  async function getSuggestion(text, settings, signal) {
-    if (!text || text.trim().length < 2) return null;
-
-    if (settings.mode === "ai") {
-      const ai = await aiSuggestion(text, signal);
-      if (ai) return sanitize(text, ai);
-      // Fall back to local so the feature still helps if the key is missing.
-    }
-
-    // Tier order: personal model first (it knows *you*), then the regex
-    // fast-path over curated templates, then the vector-space IR fallback
-    // for paraphrased lead-ins.
-    const hist = await historySuggestion(text);
-    if (hist) return " " + hist;
-
-    const tpl = templateSuggestion(text);
-    if (tpl) return tpl;
-
-    const vec = vectorTemplateSuggestion(text);
-    if (vec) return vec;
-
-    return null;
+  /** Best single suggestion (first candidate) — kept for tests + simplicity. */
+  async function getSuggestion(text) {
+    const c = await getCandidates(text);
+    return c.length ? c[0] : null;
   }
 
   // Never suggest text the user already typed; trim overlap and runaway length.
@@ -361,5 +389,5 @@
     return c;
   }
 
-  window.PromptComplete = { getSuggestion, learn };
+  window.PromptComplete = { getSuggestion, getCandidates, learn, sanitize };
 })();

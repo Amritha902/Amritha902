@@ -10,7 +10,14 @@
 (function () {
   "use strict";
 
-  const DEBOUNCE_MS = 220;
+  // Two-stage adaptive debounce, tuned for latency AND cost:
+  //   - Local tiers cost < 1ms, so they run after a short 120ms quiet gap —
+  //     the ghost feels instant.
+  //   - The AI tier is a network call, so it waits for a further quiet
+  //     period. Fast typists get local ghosts continuously and only spend an
+  //     API call when they actually pause to think.
+  const DEBOUNCE_MS = 120;
+  const AI_EXTRA_QUIET_MS = 350;
   const DEFAULTS = { enabled: true, mode: "local", model: "claude-haiku-4-5" };
 
   let settings = { ...DEFAULTS };
@@ -19,6 +26,77 @@
   let currentSuggestion = null;
   let debounceTimer = null;
   let abortCtl = null;
+
+  // Candidate cycling state (Alt+] / Alt+[): all distinct suggestions for the
+  // current draft — AI first when it arrives, then local tiers.
+  let candidates = [];
+  let candidateIdx = 0;
+
+  // --- Streaming AI tier over a long-lived port ----------------------------
+  // The service worker streams Claude deltas back per request; a new request
+  // (or port disconnect) aborts the in-flight one server-side.
+  let port = null;
+  let reqCounter = 0;
+  let aiReq = null; // { id, baseText, el, accum }
+
+  function getPort() {
+    if (port) return port;
+    try {
+      port = chrome.runtime.connect({ name: "pc-stream" });
+    } catch (_) {
+      return null;
+    }
+    port.onMessage.addListener(onPortMessage);
+    port.onDisconnect.addListener(() => {
+      port = null;
+    });
+    return port;
+  }
+
+  function onPortMessage(msg) {
+    if (!aiReq || msg.reqId !== aiReq.id) return; // stale request
+    if (msg.type === "delta") {
+      aiReq.accum += msg.delta;
+      maybeShowAi();
+    } else if (msg.type === "done") {
+      if (msg.completion) {
+        aiReq.accum = msg.completion;
+        maybeShowAi(true);
+      }
+      aiReq = null;
+    }
+  }
+
+  /** Render the streaming AI suggestion if the draft hasn't moved on. */
+  function maybeShowAi(final = false) {
+    const { el, baseText, accum } = aiReq;
+    if (el !== activeInput || readText(el) !== baseText || !caretAtEnd(el)) return;
+    const s = window.PromptComplete.sanitize(baseText, accum);
+    if (!s) return;
+    // AI leads the candidate list; local tiers stay reachable via Alt+].
+    if (candidates.aiLed) {
+      candidates[0] = s; // grow in place as deltas stream
+    } else {
+      candidates = [s, ...candidates];
+      candidates.aiLed = true;
+    }
+    // Upgrade the visible ghost only if the user hasn't cycled away from
+    // the top candidate.
+    if (candidateIdx === 0) setSuggestion(el, s, final);
+    else updateCounterPill();
+  }
+
+  function requestAi(el, text) {
+    const p = getPort();
+    if (!p) return;
+    aiReq = { id: ++reqCounter, baseText: text, el, accum: "" };
+    try {
+      p.postMessage({ type: "complete", reqId: aiReq.id, text });
+    } catch (_) {
+      aiReq = null;
+      port = null;
+    }
+  }
 
   // --- Settings -----------------------------------------------------------
   chrome.storage.sync.get(DEFAULTS, (s) => {
@@ -136,7 +214,12 @@
 
   function hideGhost() {
     currentSuggestion = null;
-    if (ghostEl) ghostEl.style.display = "none";
+    candidates = [];
+    aiReq = null; // orphan any in-flight stream; the next request supersedes it
+    if (ghostEl) {
+      ghostEl.style.display = "none";
+      delete ghostEl.dataset.count;
+    }
     if (abortCtl) {
       abortCtl.abort();
       abortCtl = null;
@@ -144,11 +227,34 @@
   }
 
   // --- Suggestion flow ----------------------------------------------------
+  function paletteActive() {
+    return (
+      window.PromptPalette &&
+      (window.PromptPalette.isOpen() || window.PromptPalette.inSnippetMode())
+    );
+  }
+
+  function setSuggestion(el, suggestion, isNew = true) {
+    if (isNew && suggestion !== currentSuggestion) bumpStat("shown");
+    currentSuggestion = suggestion;
+    showGhost(el, suggestion);
+    updateCounterPill();
+  }
+
+  function updateCounterPill() {
+    if (!ghostEl) return;
+    if (candidates.length > 1) {
+      ghostEl.dataset.count = `  ${candidateIdx + 1}/${candidates.length} ⌥]`;
+    } else {
+      delete ghostEl.dataset.count;
+    }
+  }
+
   function requestSuggestion(el) {
     clearTimeout(debounceTimer);
     if (!settings.enabled) return;
     debounceTimer = setTimeout(async () => {
-      if (el !== activeInput) return;
+      if (el !== activeInput || paletteActive()) return;
       const text = readText(el);
       if (!caretAtEnd(el) || text.trim().length < 2) return hideGhost();
 
@@ -156,58 +262,113 @@
       abortCtl = new AbortController();
       const signal = abortCtl.signal;
 
-      let suggestion = null;
+      let local = [];
       try {
-        suggestion = await window.PromptComplete.getSuggestion(text, settings, signal);
+        local = await window.PromptComplete.getCandidates(text);
       } catch (_) {
-        suggestion = null;
+        local = [];
       }
       if (signal.aborted || el !== activeInput) return;
       // Guard: the text may have changed while we awaited.
       if (readText(el) !== text || !caretAtEnd(el)) return;
 
-      if (suggestion && suggestion.trim()) {
-        if (suggestion !== currentSuggestion) bumpStat("shown");
-        currentSuggestion = suggestion;
-        showGhost(el, suggestion);
+      candidates = local;
+      candidateIdx = 0;
+
+      if (local.length) {
+        // Show the best local candidate immediately; if AI mode is on, the
+        // streamed AI candidate will upgrade the ghost when it arrives.
+        setSuggestion(el, local[0]);
       } else {
         hideGhost();
+      }
+
+      // Stage 2: the AI call waits for a further quiet period so rapid
+      // typing never sprays network requests (each would be aborted anyway).
+      if (settings.mode === "ai") {
+        setTimeout(() => {
+          if (el === activeInput && readText(el) === text && caretAtEnd(el) && !paletteActive()) {
+            requestAi(el, text);
+          }
+        }, AI_EXTRA_QUIET_MS);
       }
     }, DEBOUNCE_MS);
   }
 
-  function acceptSuggestion(el) {
-    if (!currentSuggestion) return false;
-    const text = currentSuggestion;
+  function cycleCandidate(dir) {
+    if (!activeInput || candidates.length < 2) return;
+    candidateIdx = (candidateIdx + dir + candidates.length) % candidates.length;
+    setSuggestion(activeInput, candidates[candidateIdx], false);
+  }
+
+  /** Insert literal text at the caret (textarea or contenteditable). */
+  function insertAtCaret(el, text) {
     if (el.tagName === "TEXTAREA") {
       const start = el.value.length;
       el.value = el.value + text;
       el.selectionStart = el.selectionEnd = start + text.length;
       el.dispatchEvent(new Event("input", { bubbles: true }));
-    } else {
-      // execCommand integrates with ProseMirror's input handling.
-      let ok = false;
-      try {
-        ok = document.execCommand("insertText", false, text);
-      } catch (_) {
-        ok = false;
-      }
-      if (!ok) {
-        const sel = window.getSelection();
-        if (sel && sel.rangeCount) {
-          const range = sel.getRangeAt(0);
-          range.insertNode(document.createTextNode(text));
-          range.collapse(false);
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-        }
+      return;
+    }
+    // execCommand integrates with ProseMirror's input handling.
+    let ok = false;
+    try {
+      ok = document.execCommand("insertText", false, text);
+    } catch (_) {
+      ok = false;
+    }
+    if (!ok) {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount) {
+        const range = sel.getRangeAt(0);
+        range.insertNode(document.createTextNode(text));
+        range.collapse(false);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
       }
     }
+  }
+
+  function acceptSuggestion(el) {
+    if (!currentSuggestion) return false;
+    const text = currentSuggestion;
+    insertAtCaret(el, text);
     bumpStat("accepted");
+    // Value accounting: an accepted suggestion of length L saved ~L
+    // keystrokes. The dashboard derives time saved (avg typing speed) and
+    // tokens auto-completed from this single honest primitive.
+    bumpStat("chars_saved", text.length);
     currentSuggestion = null;
+    candidates = [];
     if (ghostEl) ghostEl.style.display = "none";
     if (abortCtl) {
       abortCtl.abort();
       abortCtl = null;
+    }
+    return true;
+  }
+
+  /**
+   * Partial accept (Copilot muscle memory): consume the next word of the
+   * ghost, re-render the remainder. When the last word is consumed the whole
+   * suggestion counts as accepted.
+   */
+  function acceptWord(el) {
+    if (!currentSuggestion) return false;
+    const m = currentSuggestion.match(/^\s*\S+\s?/);
+    if (!m) return false;
+    insertAtCaret(el, m[0]);
+    bumpStat("chars_saved", m[0].length);
+    const rest = currentSuggestion.slice(m[0].length);
+    if (rest.trim()) {
+      currentSuggestion = rest;
+      // Re-anchor the ghost at the new caret position.
+      showGhost(el, rest);
+      updateCounterPill();
+    } else {
+      bumpStat("accepted");
+      currentSuggestion = null;
+      candidates = [];
+      if (ghostEl) ghostEl.style.display = "none";
     }
     return true;
   }
@@ -226,7 +387,10 @@
   document.addEventListener(
     "input",
     (e) => {
-      if (e.target === activeInput && isComposer(e.target)) requestSuggestion(e.target);
+      if (e.target === activeInput && isComposer(e.target)) {
+        requestSuggestion(e.target);
+        updateHealth(e.target);
+      }
     },
     true
   );
@@ -235,12 +399,29 @@
     "keydown",
     (e) => {
       if (e.target !== activeInput) return;
+      // The slash palette and snippet mode own the keyboard while active
+      // (their capture listener runs first — see manifest script order).
+      if (paletteActive()) return;
 
-      // Accept with Tab.
-      if (e.key === "Tab" && currentSuggestion) {
+      // Accept all with Tab.
+      if (e.key === "Tab" && !e.shiftKey && currentSuggestion) {
         e.preventDefault();
         e.stopPropagation();
         acceptSuggestion(activeInput);
+        return;
+      }
+      // Partial accept: Ctrl/Cmd+Right takes the next word.
+      if (e.key === "ArrowRight" && (e.ctrlKey || e.metaKey) && currentSuggestion) {
+        e.preventDefault();
+        e.stopPropagation();
+        acceptWord(activeInput);
+        return;
+      }
+      // Cycle alternative candidates: Alt+] / Alt+[.
+      if (e.altKey && (e.key === "]" || e.key === "[") && candidates.length > 1) {
+        e.preventDefault();
+        e.stopPropagation();
+        cycleCandidate(e.key === "]" ? 1 : -1);
         return;
       }
       // Dismiss with Escape.
@@ -255,6 +436,7 @@
         if (text && window.PromptComplete) {
           window.PromptComplete.learn(text);
           recordPromptLength(text);
+          recordLabEntry(text);
         }
         hideGhost();
         return;
@@ -302,6 +484,35 @@
     }
   }
 
+  // --- Prompt Lab: local experiment log ------------------------------------
+  // Every sent prompt is logged like an ML experiment run: timestamp, size,
+  // health score, and WHICH best-practice dimensions were missing. No prompt
+  // text is stored — the analytical value is in the structure, and keeping
+  // text out makes the privacy story absolute.
+  const LAB_KEY = "pc_lab";
+  const LAB_MAX = 100;
+
+  function recordLabEntry(text) {
+    if (!window.PromptHealth) return;
+    const h = window.PromptHealth.score(text);
+    const entry = {
+      t: Date.now(),
+      words: h.words,
+      health: h.total,
+      missing: h.dims.filter((d) => d.applicable && !d.ok).map((d) => d.key),
+    };
+    try {
+      chrome.storage.local.get(LAB_KEY, (data) => {
+        const arr = data[LAB_KEY] || [];
+        arr.push(entry);
+        if (arr.length > LAB_MAX) arr.splice(0, arr.length - LAB_MAX);
+        chrome.storage.local.set({ [LAB_KEY]: arr });
+      });
+    } catch (_) {
+      /* non-fatal */
+    }
+  }
+
   // Record the token length of each submitted prompt (bounded FIFO sample).
   function recordPromptLength(text) {
     const tokens = (text.match(/\S+/g) || []).length;
@@ -315,6 +526,150 @@
       });
     } catch (_) {
       /* non-fatal */
+    }
+  }
+
+  // --- Prompt Health ring + Intent Compiler --------------------------------
+  // A small live gauge anchored to the composer scoring the draft across the
+  // five best-practice dimensions (src/health.js). Clicking it opens a panel
+  // with per-dimension status and a one-click "Compile" action that rewrites
+  // the rough draft into a structured prompt via the background worker.
+  let ringEl = null;
+  let panelEl = null;
+  let lastHealth = null;
+
+  function ensureRing() {
+    if (ringEl) return ringEl;
+    ringEl = document.createElement("div");
+    ringEl.className = "pc-ring";
+    ringEl.title = "Prompt health — click for details";
+    ringEl.innerHTML =
+      '<svg viewBox="0 0 36 36"><circle class="pc-ring-bg" cx="18" cy="18" r="15.5"/>' +
+      '<circle class="pc-ring-fg" cx="18" cy="18" r="15.5"/></svg><span class="pc-ring-num"></span>';
+    ringEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      togglePanel();
+    });
+    document.body.appendChild(ringEl);
+    return ringEl;
+  }
+
+  function healthColor(total) {
+    // coral (low) → amber → green (high), matching the warm palette.
+    if (total >= 80) return "#4a7c59";
+    if (total >= 50) return "#d8a25f";
+    return "#cc785c";
+  }
+
+  function updateHealth(el) {
+    if (!settings.enabled || !window.PromptHealth) return;
+    const text = readText(el);
+    const words = (text.match(/\S+/g) || []).length;
+    if (words < 5) return hideHealth();
+
+    lastHealth = window.PromptHealth.score(text);
+    const ring = ensureRing();
+    const rect = el.getBoundingClientRect();
+    ring.style.left = rect.right - 34 + "px";
+    ring.style.top = rect.top - 34 + "px";
+    ring.style.display = "flex";
+
+    const C = 2 * Math.PI * 15.5;
+    const fg = ring.querySelector(".pc-ring-fg");
+    fg.style.strokeDasharray = C;
+    fg.style.strokeDashoffset = C * (1 - lastHealth.total / 100);
+    fg.style.stroke = healthColor(lastHealth.total);
+    ring.querySelector(".pc-ring-num").textContent = lastHealth.total;
+    if (panelEl && panelEl.style.display !== "none") renderPanel();
+  }
+
+  function hideHealth() {
+    if (ringEl) ringEl.style.display = "none";
+    if (panelEl) panelEl.style.display = "none";
+  }
+
+  function togglePanel() {
+    if (!panelEl) {
+      panelEl = document.createElement("div");
+      panelEl.className = "pc-panel";
+      panelEl.addEventListener("click", (e) => e.stopPropagation());
+      document.body.appendChild(panelEl);
+      document.addEventListener("click", () => {
+        if (panelEl) panelEl.style.display = "none";
+      });
+    }
+    if (panelEl.style.display === "block") {
+      panelEl.style.display = "none";
+      return;
+    }
+    renderPanel();
+    const r = ringEl.getBoundingClientRect();
+    panelEl.style.left = Math.max(8, r.right - 300) + "px";
+    panelEl.style.top = r.bottom + 8 + "px";
+    panelEl.style.display = "block";
+  }
+
+  function renderPanel() {
+    if (!lastHealth) return;
+    const rows = lastHealth.dims
+      .filter((d) => d.applicable)
+      .map(
+        (d) =>
+          `<div class="pc-dim ${d.ok ? "ok" : ""}"><span class="pc-dim-mark">${d.ok ? "✓" : "○"}</span>` +
+          `<span class="pc-dim-label">${d.label}</span>` +
+          `<span class="pc-dim-hint">${d.ok ? "" : d.hint}</span></div>`
+      )
+      .join("");
+    panelEl.innerHTML =
+      `<div class="pc-panel-head">Prompt health <b>${lastHealth.total}</b>/100</div>` +
+      rows +
+      `<button class="pc-compile">⚡ Compile into a structured prompt</button>` +
+      `<div class="pc-panel-foot">Scored locally against prompt-engineering best practices. Compile uses your API key.</div>`;
+    panelEl.querySelector(".pc-compile").addEventListener("click", compileDraft);
+  }
+
+  function compileDraft() {
+    if (!activeInput) return;
+    const draft = readText(activeInput);
+    if (!draft.trim()) return;
+    const btn = panelEl.querySelector(".pc-compile");
+    btn.textContent = "Compiling…";
+    btn.disabled = true;
+    chrome.runtime.sendMessage({ type: "pc:improve", text: draft }, (resp) => {
+      btn.disabled = false;
+      if (chrome.runtime.lastError || !resp || !resp.ok || !resp.completion) {
+        btn.textContent = resp && resp.reason === "no-key"
+          ? "Add your API key in Settings first"
+          : "Couldn't compile — try again";
+        setTimeout(() => (btn.textContent = "⚡ Compile into a structured prompt"), 2200);
+        return;
+      }
+      replaceDraft(activeInput, resp.completion);
+      btn.textContent = "⚡ Compile into a structured prompt";
+      panelEl.style.display = "none";
+      updateHealth(activeInput);
+    });
+  }
+
+  function replaceDraft(el, text) {
+    if (el.tagName === "TEXTAREA") {
+      el.value = text;
+      el.selectionStart = el.selectionEnd = text.length;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      return;
+    }
+    // contenteditable: select-all then insertText keeps ProseMirror in sync.
+    el.focus();
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    try {
+      document.execCommand("insertText", false, text);
+    } catch (_) {
+      el.textContent = text;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
     }
   }
 

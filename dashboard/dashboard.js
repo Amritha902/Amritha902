@@ -13,6 +13,14 @@ function pct(n, d) {
   return Math.round((n / d) * 100) + "%";
 }
 
+/** 0.4 → "24s", 3.5 → "3.5m", 90 → "1.5h" */
+function humanMinutes(mins) {
+  if (!mins) return "0s";
+  if (mins < 1) return Math.round(mins * 60) + "s";
+  if (mins < 60) return (Math.round(mins * 10) / 10) + "m";
+  return (Math.round((mins / 60) * 10) / 10) + "h";
+}
+
 function topPhrases(ngrams, limit = 12) {
   const rows = [];
   for (const [key, choices] of Object.entries(ngrams || {})) {
@@ -112,6 +120,15 @@ function render(stats, ngrams) {
   $("accepted").textContent = accepted.toLocaleString();
   $("learned").textContent = learned.toLocaleString();
 
+  // Value receipts — all derived from one measured primitive: characters
+  // inserted by accepted suggestions. Assumptions are footnoted in the UI.
+  const charsSaved = stats.chars_saved || 0;
+  const CHARS_PER_MINUTE = 200; // ~40 WPM average typist
+  const CHARS_PER_TOKEN = 4; // standard rough LLM tokenization ratio
+  $("charsSaved").textContent = charsSaved.toLocaleString();
+  $("timeSaved").textContent = humanMinutes(charsSaved / CHARS_PER_MINUTE);
+  $("tokensCompleted").textContent = Math.round(charsSaved / CHARS_PER_TOKEN).toLocaleString();
+
   // Acceptance breakdown bar.
   const ignored = Math.max(0, shown - accepted - dismissed);
   const bar = $("bar");
@@ -151,6 +168,9 @@ function render(stats, ngrams) {
         accepted,
         dismissed,
         model_size: learned,
+        chars_saved: charsSaved,
+        est_minutes_saved: +(charsSaved / CHARS_PER_MINUTE).toFixed(1),
+        est_tokens_completed: Math.round(charsSaved / CHARS_PER_TOKEN),
       },
       top_phrases: rows.slice(0, 3),
     },
@@ -159,16 +179,64 @@ function render(stats, ngrams) {
   );
 }
 
-function load() {
-  chrome.storage.local.get(["pc_stats", "pc_ngrams", "pc_stats_daily", "pc_lengths"], (data) => {
-    render(data.pc_stats || {}, data.pc_ngrams || {});
-    renderTrend(data.pc_stats_daily || {});
-    renderLengthStats(data.pc_lengths || []);
-  });
+// --- Prompt Lab -------------------------------------------------------------
+const DIM_LABELS = {
+  role: "Role",
+  context: "Context",
+  specificity: "Specifics",
+  format: "Format",
+  structure: "Structure",
+};
+
+function renderLab(lab) {
+  const tbody = document.querySelector("#lab tbody");
+  const empty = document.getElementById("lab-empty");
+  const coach = document.getElementById("coach");
+  tbody.innerHTML = "";
+  if (!lab || lab.length === 0) {
+    empty.hidden = false;
+    coach.hidden = true;
+    return;
+  }
+  empty.hidden = true;
+
+  // Coaching stat: the dimension you most often leave out.
+  const missCounts = {};
+  for (const e of lab) for (const k of e.missing || []) missCounts[k] = (missCounts[k] || 0) + 1;
+  const topMiss = Object.entries(missCounts).sort((a, b) => b[1] - a[1])[0];
+  if (topMiss) {
+    coach.hidden = false;
+    coach.innerHTML = `Coaching signal: you most often skip <b>${DIM_LABELS[topMiss[0]] || topMiss[0]}</b> — missing in ${topMiss[1]} of your last ${lab.length} prompts.`;
+  } else {
+    coach.hidden = false;
+    coach.innerHTML = "Coaching signal: your recent prompts cover every applicable technique. 🎯";
+  }
+
+  for (const e of [...lab].reverse().slice(0, 20)) {
+    const when = new Date(e.t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    const missing = (e.missing || []).map((k) => DIM_LABELS[k] || k).join(", ") || "—";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${when}</td><td class="num">${e.words}</td><td class="num">${e.health}</td><td>${missing}</td>`;
+    tbody.appendChild(tr);
+  }
 }
 
+function load() {
+  chrome.storage.local.get(
+    ["pc_stats", "pc_ngrams", "pc_stats_daily", "pc_lengths", "pc_lab"],
+    (data) => {
+      render(data.pc_stats || {}, data.pc_ngrams || {});
+      renderTrend(data.pc_stats_daily || {});
+      renderLengthStats(data.pc_lengths || []);
+      renderLab(data.pc_lab || []);
+    }
+  );
+}
+
+const ALL_KEYS = ["pc_stats", "pc_ngrams", "pc_cont", "pc_stats_daily", "pc_lengths", "pc_lab"];
+
 $("export").addEventListener("click", () => {
-  chrome.storage.local.get(["pc_stats", "pc_ngrams", "pc_stats_daily", "pc_lengths"], (data) => {
+  chrome.storage.local.get(ALL_KEYS, (data) => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -181,7 +249,17 @@ $("export").addEventListener("click", () => {
 
 $("reset").addEventListener("click", () => {
   if (!confirm("Reset your local stats and learned model? This cannot be undone.")) return;
-  chrome.storage.local.set({ pc_stats: { shown: 0, accepted: 0, dismissed: 0 }, pc_ngrams: {} }, load);
+  chrome.storage.local.set(
+    {
+      pc_stats: { shown: 0, accepted: 0, dismissed: 0, chars_saved: 0 },
+      pc_ngrams: {},
+      pc_cont: { counts: {}, pairs: 0 },
+      pc_stats_daily: {},
+      pc_lengths: [],
+      pc_lab: [],
+    },
+    load
+  );
 });
 
 chrome.storage.onChanged.addListener((_c, area) => {

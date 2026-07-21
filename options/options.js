@@ -5,12 +5,14 @@ const DEFAULTS = {
   mode: "local",
   apiKey: "",
   model: "claude-haiku-4-5",
+  improveModel: "claude-sonnet-5",
 };
 
 const $ = (id) => document.getElementById(id);
 const enabled = $("enabled");
 const apiKey = $("apiKey");
 const model = $("model");
+const improveModel = $("improveModel");
 const aiSettings = $("ai-settings");
 const savedBadge = $("saved");
 const testBtn = $("test");
@@ -38,6 +40,7 @@ function save() {
     mode: currentMode(),
     apiKey: apiKey.value.trim(),
     model: model.value,
+    improveModel: improveModel.value,
   };
   chrome.storage.sync.set(data, flashSaved);
 }
@@ -47,6 +50,7 @@ chrome.storage.sync.get(DEFAULTS, (s) => {
   enabled.checked = s.enabled;
   apiKey.value = s.apiKey || "";
   model.value = s.model || "claude-haiku-4-5";
+  improveModel.value = s.improveModel || "claude-sonnet-5";
   const radio = document.querySelector(`input[name="mode"][value="${s.mode}"]`);
   if (radio) radio.checked = true;
   syncAiVisibility();
@@ -56,6 +60,7 @@ chrome.storage.sync.get(DEFAULTS, (s) => {
 enabled.addEventListener("change", save);
 apiKey.addEventListener("input", save);
 model.addEventListener("change", save);
+improveModel.addEventListener("change", save);
 document.querySelectorAll('input[name="mode"]').forEach((r) =>
   r.addEventListener("change", () => {
     syncAiVisibility();

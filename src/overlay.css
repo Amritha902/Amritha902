@@ -20,6 +20,139 @@
   }
 }
 
+/* Candidate counter pill rendered after the ghost text (e.g. "2/3 ⌥]"). */
+.pc-ghost[data-count]::after {
+  content: attr(data-count);
+  font-size: 0.72em;
+  opacity: 0.6;
+  letter-spacing: 0.02em;
+}
+
+/* --- Prompt Health ring --------------------------------------------------- */
+.pc-ring {
+  position: fixed;
+  z-index: 2147483646;
+  width: 30px;
+  height: 30px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.18));
+}
+.pc-ring svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+.pc-ring-bg {
+  fill: #fdfbf7;
+  stroke: #e7e0d4;
+  stroke-width: 3;
+}
+.pc-ring-fg {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.25s ease, stroke 0.25s ease;
+}
+.pc-ring-num {
+  position: relative;
+  font: 700 10px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #2b2723;
+}
+@media (prefers-color-scheme: dark) {
+  .pc-ring-bg { fill: #26231f; stroke: #37332d; }
+  .pc-ring-num { color: #eeeae3; }
+}
+
+/* --- Health panel ---------------------------------------------------------- */
+.pc-panel {
+  position: fixed;
+  z-index: 2147483647;
+  display: none;
+  width: 300px;
+  background: #fdfbf7;
+  color: #2b2723;
+  border: 1px solid #e7e0d4;
+  border-radius: 12px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.16);
+  padding: 12px;
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.pc-panel-head { font-weight: 700; margin-bottom: 8px; }
+.pc-panel-head b { color: #cc785c; }
+.pc-dim { display: flex; gap: 8px; padding: 4px 0; align-items: baseline; }
+.pc-dim-mark { color: #cc785c; width: 14px; flex: none; }
+.pc-dim.ok .pc-dim-mark { color: #4a7c59; }
+.pc-dim-label { font-weight: 600; width: 66px; flex: none; }
+.pc-dim-hint { color: #6f6a62; font-size: 12px; }
+.pc-compile {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #cc785c, #b8613f);
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+.pc-compile:disabled { opacity: 0.7; cursor: wait; }
+.pc-panel-foot { color: #6f6a62; font-size: 11px; margin-top: 8px; }
+@media (prefers-color-scheme: dark) {
+  .pc-panel { background: #26231f; color: #eeeae3; border-color: #37332d; }
+  .pc-dim-hint, .pc-panel-foot { color: #a49d92; }
+}
+
+/* --- Slash scaffold palette ------------------------------------------------ */
+.pc-palette {
+  position: fixed;
+  z-index: 2147483647;
+  display: none;
+  width: 380px;
+  max-height: 340px;
+  overflow-y: auto;
+  background: #fdfbf7;
+  color: #2b2723;
+  border: 1px solid #e7e0d4;
+  border-radius: 12px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.16);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.pc-palette-head {
+  padding: 8px 12px;
+  color: #6f6a62;
+  font-size: 11px;
+  border-bottom: 1px solid #e7e0d4;
+  position: sticky;
+  top: 0;
+  background: inherit;
+}
+.pc-palette-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.pc-palette-item.sel { background: rgba(204, 120, 92, 0.12); }
+.pc-palette-trigger {
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+  color: #cc785c;
+  width: 84px;
+  flex: none;
+}
+.pc-palette-title { font-weight: 600; }
+.pc-palette-why { color: #6f6a62; font-size: 11px; margin-left: auto; text-align: right; }
+@media (prefers-color-scheme: dark) {
+  .pc-palette { background: #26231f; color: #eeeae3; border-color: #37332d; }
+  .pc-palette-head { border-color: #37332d; color: #a49d92; }
+  .pc-palette-why { color: #a49d92; }
+}
+
 /* Off-screen mirror used to measure the caret position inside a <textarea>. */
 .pc-mirror {
   position: absolute;
