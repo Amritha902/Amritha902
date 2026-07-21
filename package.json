@@ -1,0 +1,13 @@
+{
+  "name": "promptcomplete",
+  "version": "0.2.0",
+  "description": "Inline ghost-text autocomplete for AI chat prompts — Claude-first, on-device personalization, zero dependencies.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/model.test.mjs",
+    "icons": "node tools/gen-icons.mjs"
+  },
+  "author": "Amritha",
+  "license": "MIT"
+}

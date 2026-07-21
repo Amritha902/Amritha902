@@ -55,12 +55,29 @@
     return null;
   }
 
-  // --- Personal n-gram model (learned from the user's own prompts) ---------
-  // We store a map from a 2-3 word prefix -> {continuation: count}. On each
-  // accepted/submitted prompt we index its phrases so future typing of the
-  // same lead-in predicts the continuation.
+  // --- Personal n-gram language model --------------------------------------
+  // A word-level back-off model trained incrementally on the user's own
+  // prompts, entirely on-device.
+  //
+  //   Data:   counts C(w | h) for histories h of order 2 and 3.
+  //   Score:  P(w | h) = λ₃·P̂₃(w | h₃) + λ₂·P̂₂(w | h₂)
+  //           where P̂ₙ is the maximum-likelihood estimate at order n and the
+  //           λ's implement simple linear interpolation (Jelinek-Mercer
+  //           smoothing) so the trigram evidence dominates when present but
+  //           the bigram floor keeps predictions from vanishing on sparse
+  //           histories.
+  //   Emit:   greedy decoding, one word at a time, but ONLY while the
+  //           interpolated probability clears CONFIDENCE_MIN and the winning
+  //           count clears SUPPORT_MIN — an autocomplete that is unsure
+  //           should stay silent rather than guess (precision > recall:
+  //           every bad ghost costs user trust).
   const HISTORY_KEY = "pc_ngrams";
   const MAX_NGRAMS = 4000;
+  const LAMBDA_3 = 0.7; // weight on the trigram estimate
+  const LAMBDA_2 = 0.3; // weight on the bigram estimate
+  const CONFIDENCE_MIN = 0.45; // interpolated P(w|h) below this → stop emitting
+  const SUPPORT_MIN = 2; // require the winning continuation seen ≥ this often
+  const MAX_EMIT = 6; // cap the greedy rollout length
 
   let ngramCache = null;
 
@@ -75,24 +92,46 @@
     return ngramCache;
   }
 
-  function tokenize(s) {
+  // ---- Learning pipeline: ingest → normalize → chunk → index --------------
+  // Each stage is a pure function so the pipeline is testable in isolation.
+
+  /** Stage 1 — normalize: lowercase, strip punctuation, collapse whitespace. */
+  function normalize(s) {
     return s.toLowerCase().match(/[a-z0-9']+/g) || [];
   }
 
-  // Learn from a completed prompt: index each 2- and 3-word window -> next word.
-  async function learn(promptText) {
-    if (!promptText || promptText.length < 8) return;
-    const grams = await loadNgrams();
-    const words = tokenize(promptText);
+  /**
+   * Stage 2 — chunk: slide fixed-width windows over the token stream and pair
+   * each history chunk with the token that follows it. Emits `{h, next}`
+   * records for orders 2 and 3 — the training examples for the model.
+   */
+  function chunk(tokens) {
+    const records = [];
     for (let n = 2; n <= 3; n++) {
-      for (let i = 0; i + n < words.length; i++) {
-        const key = words.slice(i, i + n).join(" ");
-        const next = words[i + n];
-        grams[key] = grams[key] || {};
-        grams[key][next] = (grams[key][next] || 0) + 1;
+      for (let i = 0; i + n < tokens.length; i++) {
+        records.push({ h: tokens.slice(i, i + n).join(" "), next: tokens[i + n] });
       }
     }
-    // Evict if the model grows too large (drop the least-recently-touched keys).
+    return records;
+  }
+
+  /** Stage 3 — index: fold the chunked records into the count table. */
+  function index(grams, records) {
+    for (const { h, next } of records) {
+      grams[h] = grams[h] || {};
+      grams[h][next] = (grams[h][next] || 0) + 1;
+    }
+    return grams;
+  }
+
+  /** Full pipeline — run on every submitted prompt (ingest happens upstream). */
+  async function learn(promptText) {
+    if (!promptText || promptText.length < 8) return;
+    const grams = index(await loadNgrams(), chunk(normalize(promptText)));
+
+    // Bounded model: evict oldest-inserted histories past the cap. JS objects
+    // preserve insertion order, so this is FIFO eviction — cheap and adequate
+    // for a per-user model of this size.
     const keys = Object.keys(grams);
     if (keys.length > MAX_NGRAMS) {
       for (const k of keys.slice(0, keys.length - MAX_NGRAMS)) delete grams[k];
@@ -105,38 +144,61 @@
     }
   }
 
-  // Predict a short continuation (up to a few words) from the personal model.
+  // ---- Inference: interpolated back-off scoring + confidence gating -------
+
+  /** MLE distribution over continuations of history `h`, or null if unseen. */
+  function mle(grams, h) {
+    const counts = grams[h];
+    if (!counts) return null;
+    let total = 0;
+    for (const c of Object.values(counts)) total += c;
+    return { counts, total };
+  }
+
+  /**
+   * Score every candidate continuation of the current context with
+   * P(w|h) = λ₃·P̂₃ + λ₂·P̂₂ and return the argmax with its probability
+   * and raw support, or null when both orders are unseen.
+   */
+  function predictNext(grams, context) {
+    const d3 = context.length >= 3 ? mle(grams, context.slice(-3).join(" ")) : null;
+    const d2 = context.length >= 2 ? mle(grams, context.slice(-2).join(" ")) : null;
+    if (!d3 && !d2) return null;
+
+    const candidates = new Set([
+      ...(d3 ? Object.keys(d3.counts) : []),
+      ...(d2 ? Object.keys(d2.counts) : []),
+    ]);
+
+    let best = null;
+    for (const w of candidates) {
+      const p3 = d3 ? (d3.counts[w] || 0) / d3.total : 0;
+      const p2 = d2 ? (d2.counts[w] || 0) / d2.total : 0;
+      const p = LAMBDA_3 * p3 + LAMBDA_2 * p2;
+      const support = Math.max(d3 ? d3.counts[w] || 0 : 0, d2 ? d2.counts[w] || 0 : 0);
+      if (!best || p > best.p) best = { w, p, support };
+    }
+    return best;
+  }
+
+  /**
+   * Greedy rollout: extend the context word by word while the model stays
+   * confident. Silence beats a wrong guess — every bad ghost costs trust.
+   */
   async function historySuggestion(text) {
-    const grams = await loadNgrams();
-    const words = tokenize(text);
-    if (words.length < 2) return null;
     if (/\s$/.test(text) === false) return null; // only extend at a word boundary
+    const grams = await loadNgrams();
+    let context = normalize(text);
+    if (context.length < 2) return null;
 
     const out = [];
-    let context = words.slice(-3);
-    for (let step = 0; step < 6; step++) {
-      let key = context.slice(-3).join(" ");
-      let choices = grams[key];
-      if (!choices) {
-        key = context.slice(-2).join(" ");
-        choices = grams[key];
-      }
-      if (!choices) break;
-      // Pick the most frequent continuation.
-      let best = null;
-      let bestCount = 0;
-      for (const [w, c] of Object.entries(choices)) {
-        if (c > bestCount) {
-          best = w;
-          bestCount = c;
-        }
-      }
-      if (!best || bestCount < 2) break; // need at least a little evidence
-      out.push(best);
-      context = context.concat(best);
+    for (let step = 0; step < MAX_EMIT; step++) {
+      const pred = predictNext(grams, context);
+      if (!pred || pred.p < CONFIDENCE_MIN || pred.support < SUPPORT_MIN) break;
+      out.push(pred.w);
+      context = context.concat(pred.w);
     }
-    if (out.length === 0) return null;
-    return out.join(" ");
+    return out.length ? out.join(" ") : null;
   }
 
   // --- AI suggestion (via background worker) -------------------------------
