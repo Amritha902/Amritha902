@@ -52,11 +52,26 @@
     const trimmed = text.replace(/\s+$/, "");
     if (normalize(trimmed).length > TEMPLATE_WINDOW) return null;
     for (const t of TEMPLATES) {
-      if (t.when.test(trimmed)) {
+      const m = trimmed.match(t.when);
+      if (m) {
+        // Fire only while the typed text IS the trigger phrase. Once the user
+        // has typed past it ("write an email to my manager"), appending the
+        // template would duplicate what they already wrote — stay silent and
+        // let the personal model / IR / AI tiers take over.
+        if (trimmed.slice(m[0].length).trim() !== "") continue;
         return t.add.replace(/^\s+/, " ");
       }
     }
     return null;
+  }
+
+  // Generic last-line guard for every tier: reject a candidate whose opening
+  // words repeat the tail of what the user already typed ("…to my manager" +
+  // " to {recipient}…").
+  function overlapsTail(text, candidate) {
+    const tail = normalize(text).slice(-3);
+    const head = normalize(candidate).slice(0, 2);
+    return head.length > 0 && head.some((w) => tail.includes(w));
   }
 
   // ---- Vector-space template retrieval (IR tier) --------------------------
@@ -359,10 +374,10 @@
     if (!text || text.trim().length < 2) return [];
     const out = [];
     const push = (s) => {
-      if (s && !out.includes(s)) out.push(s);
+      if (s && !out.includes(s) && !overlapsTail(text, s)) out.push(s);
     };
     const hist = await historySuggestion(text);
-    if (hist) push(" " + hist);
+    if (hist) out.push(" " + hist); // the model predicts *from* the tail — overlap guard doesn't apply
     push(templateSuggestion(text));
     push(vectorTemplateSuggestion(text));
     return out;

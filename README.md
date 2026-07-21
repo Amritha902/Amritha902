@@ -73,7 +73,20 @@ Anthropic API key. Ghost completions default to `claude-haiku-4-5` (latency);
 the Intent Compiler defaults to `claude-sonnet-5` (quality). Your key lives in
 your browser's extension storage and is sent only to `api.anthropic.com`.
 
-Run the tests: `npm test` (zero-dependency suite, 9 behavioral tests).
+Run the tests: `npm test` (zero-dependency suite, 11 behavioral tests).
+
+## Live demo (no install)
+
+`demo/composer.html` is a Claude-style demo composer that runs the **real,
+unmodified extension scripts** against a stubbed `chrome.*` API — open it in
+any browser to feel the ghost text, health ring, and `/` palette without
+loading the extension. `node demo/capture.mjs` drives it with Playwright and
+captures the screenshots in `demo/shots/` (it doubles as the E2E test — it
+caught a real template-duplication bug that is now covered by the unit suite).
+
+| Ghost text | Personal model | `/` palette |
+|---|---|---|
+| ![ghost](demo/shots/1-ghost.png) | ![personal](demo/shots/3-personal.png) | ![palette](demo/shots/4-palette.png) |
 
 ## How it works
 

@@ -110,6 +110,22 @@ test("template tiers stay silent deep into a developed prompt", async () => {
   assert.equal(s, null, `lead-in templates must not fire past the window, got ${JSON.stringify(s)}`);
 });
 
+test("template never duplicates words the user already typed past the trigger", async () => {
+  store = {};
+  // Caught by the E2E demo: "write an email to my manager" used to get
+  // " to {recipient} about {topic}…" appended — duplicating "to".
+  const s = await PC.getSuggestion("write an email to my manager", { mode: "local" });
+  if (s) {
+    assert.ok(!/^\s*to\b/i.test(s), `suggestion must not repeat "to", got ${JSON.stringify(s)}`);
+  }
+});
+
+test("template still fires when the typed text is exactly the trigger", async () => {
+  store = {};
+  const s = await PC.getSuggestion("write an email", { mode: "local" });
+  assert.ok(s && /recipient/.test(s), `trigger-only text should still complete, got ${JSON.stringify(s)}`);
+});
+
 // --- Runner -----------------------------------------------------------------
 let failed = 0;
 for (const { name, fn } of tests) {
