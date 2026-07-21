@@ -101,6 +101,11 @@ call goes to Claude Sonnet with your key.)
 |---|---|
 | ![draft](demo/shots/6-draft.png) | ![compiled](demo/shots/7-compiled.png) |
 
+**▶ Full 42-second product tour with captions:**
+[`demo/shots/tour.webm`](demo/shots/tour.webm) — every feature in one take
+(ghost text → personal model → `/` scaffolds with placeholder jumping → health
+ring → Intent Compiler). Regenerate with `node demo/video.mjs`.
+
 `node demo/record.mjs` regenerates the hero GIF — Playwright video → PNG
 frames → an animated GIF assembled by our own dependency-free GIF89a encoder
 ([`tools/gif.mjs`](tools/gif.mjs): PNG decode, palette quantization, LZW).
