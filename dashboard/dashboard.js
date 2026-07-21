@@ -30,6 +30,77 @@ function topPhrases(ngrams, limit = 12) {
   return rows.slice(0, limit);
 }
 
+// --- EDA: time series + descriptive statistics ------------------------------
+
+/** Last `days` daily buckets as an ordered [{date, rate}] series (nulls for
+ *  days with no impressions, so gaps render as gaps — not as zeros). */
+function dailySeries(daily, days = 14) {
+  const out = [];
+  const now = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    const b = daily[key];
+    out.push({
+      date: key.slice(5), // MM-DD
+      rate: b && b.shown ? b.accepted / b.shown : null,
+    });
+  }
+  return out;
+}
+
+function renderTrend(daily) {
+  const series = dailySeries(daily);
+  const svg = document.getElementById("trend");
+  const W = 560;
+  const H = 120;
+  const PAD = 8;
+  const step = (W - PAD * 2) / Math.max(1, series.length - 1);
+  const y = (r) => H - PAD - r * (H - PAD * 2);
+
+  let path = "";
+  const dots = [];
+  series.forEach((p, i) => {
+    if (p.rate === null) return;
+    const px = PAD + i * step;
+    const py = y(p.rate);
+    path += (path ? " L" : "M") + px.toFixed(1) + " " + py.toFixed(1);
+    dots.push(`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="3.5" />`);
+  });
+
+  svg.innerHTML =
+    `<line class="grid" x1="${PAD}" y1="${y(0.5).toFixed(1)}" x2="${W - PAD}" y2="${y(0.5).toFixed(1)}" />` +
+    (path ? `<path class="line" d="${path}" />` : "") +
+    dots.join("");
+
+  const axis = document.getElementById("trend-axis");
+  axis.innerHTML = "";
+  [series[0], series[Math.floor(series.length / 2)], series[series.length - 1]].forEach((p) => {
+    const s = document.createElement("span");
+    s.textContent = p.date;
+    axis.appendChild(s);
+  });
+}
+
+/** Classic five-number-ish summary over the bounded length sample. */
+function renderLengthStats(lengths) {
+  const put = (id, v) => (document.getElementById(id).textContent = v);
+  if (!lengths || lengths.length === 0) {
+    ["len-mean", "len-median", "len-min", "len-max", "len-n"].forEach((id) => put(id, "—"));
+    return;
+  }
+  const sorted = [...lengths].sort((a, b) => a - b);
+  const n = sorted.length;
+  const mean = sorted.reduce((a, b) => a + b, 0) / n;
+  const median = n % 2 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
+  put("len-mean", mean.toFixed(1));
+  put("len-median", String(median));
+  put("len-min", String(sorted[0]));
+  put("len-max", String(sorted[n - 1]));
+  put("len-n", String(n));
+}
+
 function render(stats, ngrams) {
   const shown = stats.shown || 0;
   const accepted = stats.accepted || 0;
@@ -89,13 +160,15 @@ function render(stats, ngrams) {
 }
 
 function load() {
-  chrome.storage.local.get(["pc_stats", "pc_ngrams"], (data) => {
+  chrome.storage.local.get(["pc_stats", "pc_ngrams", "pc_stats_daily", "pc_lengths"], (data) => {
     render(data.pc_stats || {}, data.pc_ngrams || {});
+    renderTrend(data.pc_stats_daily || {});
+    renderLengthStats(data.pc_lengths || []);
   });
 }
 
 $("export").addEventListener("click", () => {
-  chrome.storage.local.get(["pc_stats", "pc_ngrams"], (data) => {
+  chrome.storage.local.get(["pc_stats", "pc_ngrams", "pc_stats_daily", "pc_lengths"], (data) => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

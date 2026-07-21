@@ -80,11 +80,34 @@ test("trigram evidence outweighs bigram evidence (interpolation order)", async (
   assert.ok(s && s.includes("carefully"), `trigram should win, got ${JSON.stringify(s)}`);
 });
 
+// --- Stemming (evidence pooling) --------------------------------------------
+test("stemmed history keys pool evidence across inflections", async () => {
+  store = {};
+  // Train with "writing", query with "write" — stems must unify the histories.
+  for (let i = 0; i < 3; i++) await PC.learn("writing an email to the whole team tonight");
+  const s = await PC.getSuggestion("write an email to the ", { mode: "local" });
+  assert.ok(s && s.includes("whole"), `inflections should share evidence, got ${JSON.stringify(s)}`);
+});
+
 // --- Templates --------------------------------------------------------------
 test("template fallback fires for a known pattern", async () => {
   store = {}; // empty personal model → templates take over
   const s = await PC.getSuggestion("explain", { mode: "local" });
   assert.ok(s && s.length > 5, "curated template should fire on a known lead-in");
+});
+
+test("vector-space retrieval catches a paraphrased lead-in", async () => {
+  store = {};
+  // "please write an email" misses the ^write regex but must match by cosine.
+  const s = await PC.getSuggestion("please write an email", { mode: "local" });
+  assert.ok(s && /recipient|topic|concise/.test(s), `IR tier should fire, got ${JSON.stringify(s)}`);
+});
+
+test("template tiers stay silent deep into a developed prompt", async () => {
+  store = {};
+  const long = "write an email to my boss about the deadline extension we discussed yesterday evening ";
+  const s = await PC.getSuggestion(long, { mode: "local" });
+  assert.equal(s, null, `lead-in templates must not fire past the window, got ${JSON.stringify(s)}`);
 });
 
 // --- Runner -----------------------------------------------------------------

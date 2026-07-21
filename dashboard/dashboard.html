@@ -36,6 +36,25 @@
       </section>
 
       <section class="panel">
+        <h2>Acceptance rate over time</h2>
+        <p class="hint">Daily acceptance rate for the last 14 days — your model getting better at predicting you.</p>
+        <svg id="trend" viewBox="0 0 560 120" preserveAspectRatio="none" role="img" aria-label="Daily acceptance rate trend"></svg>
+        <div class="axis" id="trend-axis"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Prompt-length statistics</h2>
+        <p class="hint">Descriptive statistics over your last 200 prompts (token counts).</p>
+        <div class="stat-row">
+          <div class="stat"><span id="len-mean">—</span><small>mean</small></div>
+          <div class="stat"><span id="len-median">—</span><small>median</small></div>
+          <div class="stat"><span id="len-min">—</span><small>min</small></div>
+          <div class="stat"><span id="len-max">—</span><small>max</small></div>
+          <div class="stat"><span id="len-n">—</span><small>n</small></div>
+        </div>
+      </section>
+
+      <section class="panel">
         <h2>Acceptance breakdown</h2>
         <div class="bar-track" id="bar"></div>
         <div class="legend">

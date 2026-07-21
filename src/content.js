@@ -252,7 +252,10 @@
       // Learn from the submitted prompt (Enter without Shift is "send").
       if (e.key === "Enter" && !e.shiftKey) {
         const text = readText(activeInput);
-        if (text && window.PromptComplete) window.PromptComplete.learn(text);
+        if (text && window.PromptComplete) {
+          window.PromptComplete.learn(text);
+          recordPromptLength(text);
+        }
         hideGhost();
         return;
       }
@@ -267,15 +270,48 @@
   // --- Local, privacy-preserving analytics --------------------------------
   // We track how often suggestions are shown vs. accepted so the user can see
   // their personal acceptance rate — the core offline metric for an
-  // autocomplete model. Everything stays in chrome.storage.local; nothing is
-  // ever transmitted.
+  // autocomplete model. Alongside the lifetime totals we keep DAILY buckets
+  // (a time-series dataset for the dashboard's trend chart) and a bounded
+  // sample of prompt lengths (for descriptive statistics). Everything stays
+  // in chrome.storage.local; nothing is ever transmitted.
   const STATS_KEY = "pc_stats";
+  const DAILY_KEY = "pc_stats_daily";
+  const LENGTHS_KEY = "pc_lengths";
+  const DAILY_RETENTION = 30; // keep a month of daily buckets
+  const LENGTH_SAMPLE_MAX = 200; // reservoir of recent prompt lengths
+
+  const todayKey = () => new Date().toISOString().slice(0, 10);
+
   function bumpStat(field, by = 1) {
     try {
-      chrome.storage.local.get(STATS_KEY, (data) => {
+      chrome.storage.local.get([STATS_KEY, DAILY_KEY], (data) => {
         const s = data[STATS_KEY] || { shown: 0, accepted: 0, dismissed: 0 };
         s[field] = (s[field] || 0) + by;
-        chrome.storage.local.set({ [STATS_KEY]: s });
+
+        const daily = data[DAILY_KEY] || {};
+        const day = (daily[todayKey()] = daily[todayKey()] || { shown: 0, accepted: 0, dismissed: 0 });
+        day[field] = (day[field] || 0) + by;
+        // Retention: drop buckets older than the window (keys sort by date).
+        const days = Object.keys(daily).sort();
+        while (days.length > DAILY_RETENTION) delete daily[days.shift()];
+
+        chrome.storage.local.set({ [STATS_KEY]: s, [DAILY_KEY]: daily });
+      });
+    } catch (_) {
+      /* non-fatal */
+    }
+  }
+
+  // Record the token length of each submitted prompt (bounded FIFO sample).
+  function recordPromptLength(text) {
+    const tokens = (text.match(/\S+/g) || []).length;
+    if (!tokens) return;
+    try {
+      chrome.storage.local.get(LENGTHS_KEY, (data) => {
+        const arr = data[LENGTHS_KEY] || [];
+        arr.push(tokens);
+        if (arr.length > LENGTH_SAMPLE_MAX) arr.splice(0, arr.length - LENGTH_SAMPLE_MAX);
+        chrome.storage.local.set({ [LENGTHS_KEY]: arr });
       });
     } catch (_) {
       /* non-fatal */
