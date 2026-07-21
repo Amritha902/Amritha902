@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PromptComplete — Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main class="card">
+      <header>
+        <div class="logo">⌨︎</div>
+        <div>
+          <h1>PromptComplete</h1>
+          <p class="sub">Inline autocomplete for your AI chat prompts.</p>
+        </div>
+      </header>
+
+      <section>
+        <label class="row switch">
+          <span>
+            <strong>Enable suggestions</strong>
+            <small>Show ghost-text as you type. Press <kbd>Tab</kbd> to accept, <kbd>Esc</kbd> to dismiss.</small>
+          </span>
+          <input type="checkbox" id="enabled" />
+        </label>
+      </section>
+
+      <section>
+        <h2>Suggestion source</h2>
+        <label class="radio">
+          <input type="radio" name="mode" value="local" />
+          <span>
+            <strong>Local</strong> — instant &amp; private
+            <small>Learns from your own past prompts plus a library of prompt patterns. Nothing leaves your device.</small>
+          </span>
+        </label>
+        <label class="radio">
+          <input type="radio" name="mode" value="ai" />
+          <span>
+            <strong>AI (bring your own key)</strong>
+            <small>Smarter completions from Claude. Falls back to Local if the key is missing or offline.</small>
+          </span>
+        </label>
+      </section>
+
+      <section id="ai-settings" hidden>
+        <h2>Claude API</h2>
+        <label class="field">
+          <span>API key</span>
+          <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Model</span>
+          <select id="model">
+            <option value="claude-haiku-4-5">Claude Haiku 4.5 — fastest (recommended)</option>
+            <option value="claude-sonnet-5">Claude Sonnet 5 — balanced</option>
+            <option value="claude-opus-4-8">Claude Opus 4.8 — most capable</option>
+          </select>
+          <small>Haiku is recommended: autocomplete needs low latency, and it's the cheapest model.</small>
+        </label>
+        <div class="actions">
+          <button id="test">Test key</button>
+          <span id="test-result" class="result"></span>
+        </div>
+        <p class="note">
+          Your key is stored only in your browser's extension storage and is sent
+          directly to Anthropic — never to any other server.
+        </p>
+      </section>
+
+      <footer>
+        <span id="saved" class="saved">Saved ✓</span>
+      </footer>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PromptComplete — Insights</title>
+    <link rel="stylesheet" href="dashboard.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="head">
+        <div class="logo">⌨︎</div>
+        <div>
+          <h1>Prompt Insights</h1>
+          <p class="sub">Your personal, on-device autocomplete analytics. Nothing here leaves your browser.</p>
+        </div>
+      </header>
+
+      <section class="kpis">
+        <div class="kpi">
+          <div class="kpi-value" id="acceptRate">—</div>
+          <div class="kpi-label">Acceptance rate</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-value" id="shown">—</div>
+          <div class="kpi-label">Suggestions shown</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-value" id="accepted">—</div>
+          <div class="kpi-label">Accepted</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-value" id="learned">—</div>
+          <div class="kpi-label">Phrases learned</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Acceptance breakdown</h2>
+        <div class="bar-track" id="bar"></div>
+        <div class="legend">
+          <span><i class="dot accepted"></i> Accepted</span>
+          <span><i class="dot dismissed"></i> Dismissed</span>
+          <span><i class="dot ignored"></i> Ignored</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Your top learned lead-ins</h2>
+        <p class="hint">The phrases your personal model predicts most confidently, mined from your own past prompts.</p>
+        <table id="phrases">
+          <thead>
+            <tr><th>Lead-in</th><th>Predicts →</th><th class="num">Weight</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty" id="empty" hidden>Start typing prompts in Claude — your model builds itself as you go.</p>
+      </section>
+
+      <section class="panel data-api">
+        <h2>Data export</h2>
+        <p class="hint">
+          Everything above is derived from a local dataset. Export it as JSON to
+          analyze in a notebook, or wire it into the team-analytics endpoints
+          described in the business plan.
+        </p>
+        <div class="actions">
+          <button id="export">Export dataset (JSON)</button>
+          <button id="reset" class="ghost">Reset data</button>
+        </div>
+        <pre id="schema" class="schema"></pre>
+      </section>
+    </main>
+    <script src="dashboard.js"></script>
+  </body>
+</html>

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>PromptComplete</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="head">
+      <div class="logo">⌨︎</div>
+      <div class="title">PromptComplete</div>
+    </div>
+
+    <label class="toggle">
+      <span>Suggestions</span>
+      <input type="checkbox" id="enabled" />
+    </label>
+
+    <div class="modes">
+      <button class="mode" data-mode="local">Local</button>
+      <button class="mode" data-mode="ai">AI</button>
+    </div>
+
+    <p class="hint">
+      Press <kbd>Tab</kbd> to accept, <kbd>Esc</kbd> to dismiss.
+    </p>
+
+    <button id="open-dashboard" class="link">View insights dashboard →</button>
+    <button id="open-options" class="link">Settings &amp; API key →</button>
+    <script src="popup.js"></script>
+  </body>
+</html>
