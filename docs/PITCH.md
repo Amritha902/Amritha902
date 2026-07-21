@@ -25,9 +25,25 @@ The AI prompt box is the obvious next surface for this pattern. It doesn't have 
 
 ## 2. The product
 
-**PromptComplete** is a browser extension that brings Gmail-style inline
-autocomplete to the AI prompt box, Claude-first. As you type, a greyed-out
-continuation appears at your cursor. `Tab` accepts it; `Esc` dismisses it.
+**PromptComplete** is a browser extension that upgrades the AI prompt box into
+an **IDE for prompts**, Claude-first — the surface where prompt-engineering
+best practices are *taught, applied, and measured* at the exact moment a
+person writes to Claude:
+
+- **Ghost-text autocomplete** — as you type, a greyed continuation appears at
+  your cursor; `Tab` accepts, `Ctrl/Cmd+→` takes one word, `Alt+]` cycles
+  alternatives. AI-mode completions stream token-by-token from Haiku.
+- **Prompt Health ring** — a live, on-device score of the draft against five
+  best-practice dimensions, with the missing ingredient named. Length-scaled,
+  so a short ask is never pushed toward over-engineering.
+- **Intent Compiler** — one click rewrites a rough draft into a structured,
+  best-practice prompt (proportionality rules built in).
+- **`/` scaffold palette** — 16 curated patterns demonstrating roles, XML
+  structure, multishot examples, chain-of-thought, and output formats, with
+  Tab-navigable placeholders.
+- **Prompt Lab** — every sent prompt logged locally like an ML experiment;
+  the dashboard shows your acceptance-rate trend and the technique you most
+  often skip.
 
 Two suggestion sources, one seamless UX:
 

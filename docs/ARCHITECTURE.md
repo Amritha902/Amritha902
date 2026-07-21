@@ -95,15 +95,24 @@ in order; first confident answer wins:
 
 ### Tier 1 — Personal language model
 
-An interpolated back-off n-gram model (Jelinek–Mercer linear interpolation):
+An **interpolated Kneser–Ney** n-gram model (Kneser & Ney 1995; Chen &
+Goodman 1999) — the same smoothing family used by production n-gram systems
+such as KenLM — with absolute discount D = 0.75:
 
 ```
-P(w | h) = λ₃ · P̂₃(w | h₃) + λ₂ · P̂₂(w | h₂)        λ₃=0.7, λ₂=0.3
+P₃(w|h₃) = max(C₃(h₃,w) − D, 0)/C₃(h₃) + γ(h₃) · P₂(w|h₂)
+P₂(w|h₂) = max(C₂(h₂,w) − D, 0)/C₂(h₂) + γ(h₂) · P_cont(w)
+P_cont(w) = N₁₊(·w) / Σ_v N₁₊(·v)          γ(h) = D · |{w : C(h,w)>0}| / C(h)
 ```
 
-where `P̂ₙ` is the maximum-likelihood estimate at order *n*. Trigram evidence
-dominates when present; the bigram floor keeps predictions alive on sparse
-histories. Decoding is greedy, one word at a time, gated twice:
+The Kneser–Ney insight is the back-off target: not raw word frequency but the
+**continuation probability** — how many *distinct contexts* a word completes
+(the classic "San Francisco" fix: "Francisco" is frequent but only ever
+follows "San", so it makes a poor back-off candidate). The continuation
+counts `N₁₊(·w)` are maintained **incrementally at index time** — an O(1)
+update when a (history, word) pair is first observed — so the query path
+never pays an O(table) scan. Decoding is greedy, one word at a time, gated
+twice:
 
 - **Confidence gate:** interpolated `P(w|h) ≥ 0.45`, else stop emitting.
 - **Support gate:** the winning continuation must have been seen ≥ 2 times.
@@ -205,7 +214,7 @@ For examiners and reviewers: where each foundational concept lives in code.
 | Document / NoSQL storage; sparse matrix | n-gram DOK table in `chrome.storage.local` |
 | Text analytics pipeline (clean → parse → stem) | `normalize`, `stem`, `chunk` (suggest.js) |
 | Information retrieval / vector space model | `tfVector`, `cosine`, `vectorTemplateSuggestion` |
-| Language modeling / smoothing (Jelinek–Mercer) | `predictNext` (suggest.js) |
+| Language modeling / Kneser–Ney smoothing | `predictNext`, `index` (suggest.js) |
 | Time-series dataset | daily buckets (`pc_stats_daily`) + trend chart |
 | EDA & descriptive statistics | dashboard length stats, breakdown bar |
 | Dashboard design principles | dashboard layout: KPI → trend → breakdown → detail |

@@ -1,85 +1,106 @@
 # PromptComplete
 
-**Inline autocomplete for AI chat prompts — ghost-text as you type, press `Tab` to accept.**
+**The prompt box, upgraded to an IDE — inline autocomplete, a live prompt-quality
+meter, one-click prompt compilation, and a local experiment lab. Claude-first.**
 
 Typing a good prompt is the slowest part of using an AI assistant. Gmail has Smart
-Compose. Your IDE has Copilot. The prompt box you type into every day has… nothing.
-PromptComplete fixes that: a lightweight browser extension that shows an inline,
-Gmail-style suggestion right where your cursor is, learns from *your* past prompts,
-and stays completely on-device unless you opt in to smarter AI completions.
+Compose. Your editor has Copilot. The prompt box you type into every day has…
+nothing. PromptComplete turns it into an IDE for prompts:
 
-Built Claude-first, with a warm Claude-flavored UI. Also works on ChatGPT.
+- **Ghost-text autocomplete** at the caret — `Tab` accepts, like Smart Compose.
+- **Prompt Health ring** — a live score of your draft against prompt-engineering
+  best practices, with the missing ingredient named.
+- **Intent Compiler** — one click turns a rough draft ("fix my resume idk make it
+  good") into a structured, Claude-grade prompt.
+- **`/` scaffold palette** — 16 curated prompt patterns (roles, XML tags, examples,
+  chain-of-thought, output formats) with Tab-navigable `{{placeholders}}`.
+- **Prompt Lab** — every sent prompt logged locally like an ML experiment: health
+  score, size, missing techniques, plus your acceptance-rate trend over time.
+
+Built Claude-first with a warm Claude-flavored theme. Also works on ChatGPT.
 
 <p align="center"><em>typed text</em> <code>│</code> <em>ghost suggestion…</em> &nbsp;→&nbsp; <kbd>Tab</kbd></p>
 
 ---
 
-## Why it's interesting
+## Why it's interesting (the data science inside)
 
-- **On-device personalization.** A small n-gram model builds itself from the prompts
-  *you* actually write and predicts your continuations — no server, no account, no data
-  leaving your browser.
-- **Two sources, one UX.**
-  - **Local** (default): instant, private, zero-cost. Personal model + a curated
-    library of prompt patterns.
-  - **AI** (opt-in, bring-your-own-key): short, high-quality continuations from Claude
-    (`claude-haiku-4-5` by default for low latency). Falls back to Local if offline.
-- **A real eval loop.** The extension tracks its own **acceptance rate** — the standard
-  offline metric for an autocomplete model — and shows it on a local **Insights
-  dashboard**, with a one-click dataset export for notebook analysis.
+This is a working applied-ML system, not a snippet list:
 
----
+- **An interpolated Kneser–Ney language model** — the smoothing family production
+  n-gram systems use — trained incrementally on *your own* prompts, entirely
+  on-device, with continuation counts maintained O(1) at index time.
+- **A text-analytics pipeline** — clean/parse → stem (with overstemming guards) →
+  chunk (sliding n-gram windows) → index — each stage a pure, tested function.
+- **Vector-space retrieval** — curated templates matched by cosine similarity over
+  stem TF vectors when the regex fast-path misses a paraphrase.
+- **Confidence-gated decoding** — the model emits only while `P(w|h) ≥ 0.45` with
+  support ≥ 2: silence beats a wrong guess (precision over recall, by design).
+- **A built-in eval loop** — acceptance rate (the canonical autocomplete metric),
+  daily time-series trend, descriptive statistics, and one-click dataset export.
+
+Full design + formulas: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+## Latency by design
+
+| Path | Budget |
+|---|---|
+| Local tiers (model + templates + IR) | **< 1 ms** after a 120 ms debounce |
+| AI tier (opt-in) | streams token-by-token after a further 350 ms quiet gap; in-flight requests abort server-side on the next keystroke |
+| Training | runs at send time — never on the keystroke path |
+
+## Keyboard
+
+| Key | Action |
+|---|---|
+| `Tab` | Accept the whole suggestion |
+| `Ctrl/Cmd+→` | Accept one word |
+| `Alt+]` / `Alt+[` | Cycle alternative suggestions |
+| `Esc` | Dismiss |
+| `/` at start | Open the scaffold palette |
+| `Tab` (after scaffold) | Jump to next `{{placeholder}}` |
 
 ## Install (developer mode)
 
 1. Clone this repo.
-2. Generate the icons (one time): `node tools/gen-icons.mjs`
-3. Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and
-   select this folder. (Works in Chrome, Edge, Brave, and any Chromium browser.)
-4. Open [claude.ai](https://claude.ai) and start typing — the ghost text appears at your
-   cursor. `Tab` accepts, `Esc` dismisses.
+2. `node tools/gen-icons.mjs` (one time).
+3. `chrome://extensions` → **Developer mode** → **Load unpacked** → select this
+   folder (Chrome, Edge, Brave — any Chromium browser).
+4. Open [claude.ai](https://claude.ai) and start typing.
 
-To enable AI mode, open the extension's **Settings**, switch the source to **AI**, and
-paste your Anthropic API key. The key is stored only in your browser's extension storage
-and is sent directly to `api.anthropic.com` — never anywhere else.
+**AI mode (optional):** open Settings, switch the source to **AI**, paste your
+Anthropic API key. Ghost completions default to `claude-haiku-4-5` (latency);
+the Intent Compiler defaults to `claude-sonnet-5` (quality). Your key lives in
+your browser's extension storage and is sent only to `api.anthropic.com`.
 
----
+Run the tests: `npm test` (zero-dependency suite, 9 behavioral tests).
 
 ## How it works
 
 | Piece | File | Role |
 |---|---|---|
-| Content script | `src/content.js` | Detects the composer, renders ghost text at the caret, handles `Tab`/`Esc`, learns on send |
-| Suggestion engine | `src/suggest.js` | Personal n-gram model + curated templates + AI bridge |
-| Service worker | `src/background.js` | Calls the Claude API for AI mode (with a session cache) |
-| Popup | `popup/` | Quick enable + source toggle |
-| Settings | `options/` | API key, model, source |
-| Insights | `dashboard/` | Local analytics + dataset export |
-
-The composer works for both `<textarea>` and the contenteditable (ProseMirror) editors
-Claude and ChatGPT use. Suggestions only appear when your caret is at the end of the
-text — the same model as Gmail Smart Compose — which keeps the UX predictable.
-
----
+| Content script | `src/content.js` | Composer detection, ghost rendering, keyboard, health ring, analytics |
+| Suggestion engine | `src/suggest.js` | KN language model + curated templates + vector-space IR |
+| Health engine | `src/health.js` | 5-dimension best-practice scoring, length-scaled |
+| Scaffolds | `src/templates.js`, `src/palette.js` | Curated prompt patterns + `/` palette + snippet mode |
+| Service worker | `src/background.js` | Streaming completions over a port (real abort), Intent Compiler |
+| Insights | `dashboard/` | Acceptance analytics, time series, Prompt Lab, export |
+| Popup / Settings | `popup/`, `options/` | Toggles, models, key |
 
 ## Privacy
 
-Everything is local by default. The personal model, the analytics, and your settings
-live in your browser's extension storage. In AI mode, the *only* outbound request is the
-one you authorize: your partial prompt goes directly to Anthropic with your own key.
-There is no PromptComplete server, no telemetry, and no third party in the loop.
-
----
+Local by default: the model, analytics, and settings never leave your browser.
+The Prompt Lab stores **no prompt text** — only structure (length, score, missing
+techniques). In AI mode the only outbound request is the one you authorize, with
+your own key, directly to Anthropic. No PromptComplete server. No telemetry.
 
 ## The bigger picture
 
-PromptComplete is designed as the free, personal tier of a larger product. The same
-on-device dataset that powers your Insights dashboard is the seed for a **team/enterprise
-offering**: shared prompt libraries, curated org-wide suggestions, and anonymized
-acceptance analytics served from a proper data API. See [`docs/PITCH.md`](docs/PITCH.md)
-for the business plan and a collaboration proposal.
-
----
+PromptComplete is the free personal tier of a larger offering — shared team
+prompt packs, org-wide curation, and acceptance analytics as seat-activation
+evidence. See [`docs/PITCH.md`](docs/PITCH.md) (product & business),
+[`docs/STRATEGY.md`](docs/STRATEGY.md) (the Anthropic pain points it targets),
+and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (the pipeline).
 
 ## License
 
