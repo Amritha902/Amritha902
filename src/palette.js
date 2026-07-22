@@ -27,11 +27,17 @@
   // --- Text helpers (shared across textarea + contenteditable) -------------
   const readText = (el) => (el.tagName === "TEXTAREA" ? el.value : el.innerText);
 
-  /** Map a plain-text offset range to a DOM Range inside a contenteditable. */
+  /**
+   * Select a range given in TEXT-NODE offsets (the concatenation of the
+   * element's text nodes). Crucially, the placeholder search below uses the
+   * same coordinate space — innerText offsets don't map onto text nodes
+   * because innerText renders block boundaries as newlines that exist in no
+   * text node, drifting the selection one character per preceding line.
+   */
   function selectInEditable(el, start, end) {
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     let pos = 0;
-    let range = document.createRange();
+    const range = document.createRange();
     let startSet = false;
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       const len = node.nodeValue.length;
@@ -47,28 +53,55 @@
         return true;
       }
       pos += len;
-      // innerText renders block boundaries as newlines that have no text
-      // node; nudge the offset when crossing block-level children.
     }
     return false;
   }
 
-  function selectSpan(el, start, end) {
-    if (el.tagName === "TEXTAREA") {
-      el.focus();
-      el.setSelectionRange(start, end);
-      return true;
-    }
-    el.focus();
-    return selectInEditable(el, start, end);
+  /** The element's text in text-node coordinates (matches selectInEditable). */
+  function nodeText(el) {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let out = "";
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) out += node.nodeValue;
+    return out;
   }
 
-  /** Select the next {{placeholder}}; returns false when none remain. */
+  /** Caret/selection end in text-node coordinates (0 when indeterminate). */
+  function selectionEndOffset(el) {
+    if (el.tagName === "TEXTAREA") return el.selectionEnd || 0;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return 0;
+    const r = sel.getRangeAt(0);
+    if (!el.contains(r.endContainer)) return 0;
+    const pre = document.createRange();
+    pre.selectNodeContents(el);
+    pre.setEnd(r.endContainer, r.endOffset);
+    // textContent of the cloned fragment concatenates text nodes — the same
+    // coordinate space as nodeText()/selectInEditable().
+    return pre.cloneContents().textContent.length;
+  }
+
+  /**
+   * Select the next {{placeholder}} AFTER the current selection (wrapping to
+   * the first one otherwise); returns false when none remain anywhere.
+   * Advancing past the active placeholder — rather than re-matching it — is
+   * what makes repeated Tab presses walk the scaffold instead of sticking.
+   */
   function selectNextPlaceholder(el) {
-    const text = readText(el);
-    const m = text.match(PLACEHOLDER_RE);
+    const text = el.tagName === "TEXTAREA" ? el.value : nodeText(el);
+    const from = selectionEndOffset(el);
+    let m = text.slice(from).match(PLACEHOLDER_RE);
+    let index = m ? from + m.index : -1;
+    if (!m) {
+      m = text.match(PLACEHOLDER_RE); // wrap around
+      index = m ? m.index : -1;
+    }
     if (!m) return false;
-    return selectSpan(el, m.index, m.index + m[0].length);
+    el.focus();
+    if (el.tagName === "TEXTAREA") {
+      el.setSelectionRange(index, index + m[0].length);
+      return true;
+    }
+    return selectInEditable(el, index, index + m[0].length);
   }
 
   function insertScaffold(el, body) {

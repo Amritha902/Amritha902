@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "test": "node tests/model.test.mjs",
-    "icons": "node tools/gen-icons.mjs"
+    "icons": "node tools/gen-icons.mjs",
+    "test:e2e": "node tests/e2e.test.mjs"
   },
   "author": "Amritha",
   "license": "MIT"
