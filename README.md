@@ -78,7 +78,7 @@ the Intent Compiler defaults to `claude-sonnet-5` (quality). Your key lives in
 your browser's extension storage and is sent only to `api.anthropic.com`.
 
 Run the tests: `npm test` (11 unit tests, zero dependencies) and
-`npm run test:e2e` (17 Playwright assertions: every keyboard interaction in
+`npm run test:e2e` (19 Playwright assertions: every keyboard interaction in
 the demo composer, all three extension pages, and a real-Chrome load of the
 unpacked extension with its MV3 service worker).
 
@@ -128,6 +128,8 @@ frames → an animated GIF assembled by our own dependency-free GIF89a encoder
 ## Privacy
 
 Local by default: the model, analytics, and settings never leave your browser.
+Your personal model is portable — export/import it as JSON from Settings to
+back it up or move machines.
 The Prompt Lab stores **no prompt text** — only structure (length, score, missing
 techniques). In AI mode the only outbound request is the one you authorize, with
 your own key, directly to Anthropic. No PromptComplete server. No telemetry.

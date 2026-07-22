@@ -78,6 +78,21 @@
         </p>
       </section>
 
+      <section>
+        <h2>Your personal model</h2>
+        <p class="note" style="margin-top: 0">
+          The suggestion model trained on your prompts lives only in this
+          browser. Export it to back it up or carry it to another machine.
+        </p>
+        <div class="actions">
+          <button id="export-model">Export model</button>
+          <button id="import-model" type="button">Import model…</button>
+          <input type="file" id="import-file" accept="application/json,.json" hidden />
+          <span id="model-result" class="result"></span>
+        </div>
+        <p class="note">Importing replaces the model on this machine (your stats are kept).</p>
+      </section>
+
       <footer>
         <span id="saved" class="saved">Saved ✓</span>
       </footer>

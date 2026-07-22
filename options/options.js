@@ -84,3 +84,61 @@ testBtn.addEventListener("click", () => {
     testResult.className = "result " + (resp.ok ? "ok" : "err");
   });
 });
+
+// --- Personal model export / import -----------------------------------------
+// The model is two structures: pc_ngrams (history -> continuation counts) and
+// pc_cont (Kneser-Ney continuation counts). Export bundles both with a format
+// tag; import validates the tag and shape before replacing.
+const MODEL_KEYS = ["pc_ngrams", "pc_cont"];
+const MODEL_FORMAT = "promptcomplete-model-v1";
+const modelResult = document.getElementById("model-result");
+
+function modelStatus(msg, ok) {
+  modelResult.textContent = msg;
+  modelResult.className = "result " + (ok ? "ok" : "err");
+  setTimeout(() => (modelResult.textContent = ""), 3000);
+}
+
+document.getElementById("export-model").addEventListener("click", () => {
+  chrome.storage.local.get(MODEL_KEYS, (data) => {
+    const bundle = {
+      format: MODEL_FORMAT,
+      exported_at: new Date().toISOString(),
+      pc_ngrams: data.pc_ngrams || {},
+      pc_cont: data.pc_cont || { counts: {}, pairs: 0 },
+    };
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "promptcomplete-model.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    modelStatus("Exported ✓", true);
+  });
+});
+
+document.getElementById("import-model").addEventListener("click", () => {
+  document.getElementById("import-file").click();
+});
+
+document.getElementById("import-file").addEventListener("change", async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = ""; // allow re-selecting the same file later
+  if (!file) return;
+  try {
+    const bundle = JSON.parse(await file.text());
+    if (bundle.format !== MODEL_FORMAT) throw new Error("not a PromptComplete model file");
+    if (typeof bundle.pc_ngrams !== "object" || bundle.pc_ngrams === null)
+      throw new Error("missing model data");
+    const cont =
+      bundle.pc_cont && typeof bundle.pc_cont.counts === "object"
+        ? bundle.pc_cont
+        : { counts: {}, pairs: 0 };
+    chrome.storage.local.set({ pc_ngrams: bundle.pc_ngrams, pc_cont: cont }, () => {
+      modelStatus(`Imported ${Object.keys(bundle.pc_ngrams).length} phrases ✓`, true);
+    });
+  } catch (err) {
+    modelStatus("Import failed: " + err.message, false);
+  }
+});

@@ -111,6 +111,54 @@ await test("options: switching to AI mode reveals key settings and persists", as
   await page.context().close();
 });
 
+await test("options: model export downloads a valid bundle", async () => {
+  const { page, errors } = await openPage("options/options.html", SEED);
+  const [download] = await Promise.all([
+    page.waitForEvent("download", { timeout: 5000 }),
+    page.click("#export-model"),
+  ]);
+  const path = await download.path();
+  const { readFileSync } = await import("node:fs");
+  const bundle = JSON.parse(readFileSync(path, "utf8"));
+  assert.equal(bundle.format, "promptcomplete-model-v1");
+  assert.ok(bundle.pc_ngrams["write an email"], "exported bundle should carry the seeded model");
+  assert.equal(errors.length, 0, `page errors: ${errors.join("; ")}`);
+  await page.context().close();
+});
+
+await test("options: model import replaces the model; junk is rejected", async () => {
+  const { page, errors } = await openPage("options/options.html", SEED);
+  const good = {
+    name: "model.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        format: "promptcomplete-model-v1",
+        pc_ngrams: { "deploy the staging": { branch: 5 } },
+        pc_cont: { counts: { branch: 1 }, pairs: 1 },
+      })
+    ),
+  };
+  await page.setInputFiles("#import-file", good);
+  await page.waitForTimeout(400);
+  const grams = await page.evaluate(() => window.__pcStore.local.pc_ngrams);
+  assert.ok(grams["deploy the staging"], "imported model should be active");
+  assert.ok(!grams["write an email"], "import should replace, not merge");
+
+  await page.setInputFiles("#import-file", {
+    name: "junk.json",
+    mimeType: "application/json",
+    buffer: Buffer.from('{"format":"something-else"}'),
+  });
+  await page.waitForTimeout(400);
+  const after = await page.evaluate(() => window.__pcStore.local.pc_ngrams);
+  assert.ok(after["deploy the staging"], "rejected import must not clobber the model");
+  const status = await page.locator("#model-result").textContent();
+  assert.ok(/failed/i.test(status), `junk import should surface an error, got ${JSON.stringify(status)}`);
+  assert.equal(errors.length, 0, `page errors: ${errors.join("; ")}`);
+  await page.context().close();
+});
+
 // --- Popup -------------------------------------------------------------------
 
 await test("popup: toggles persist and links navigate", async () => {
