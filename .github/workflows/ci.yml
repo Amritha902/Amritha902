@@ -30,6 +30,10 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Icons build
         run: node tools/gen-icons.mjs
+      - name: Store package builds cleanly
+        run: node tools/pack.mjs
+      - name: E2E assertions (every advertised interaction)
+        run: node tests/e2e.test.mjs
       - name: Drive the demo composer and capture screenshots
         run: node demo/capture.mjs
       - name: Upload screenshots
