@@ -34,6 +34,10 @@ jobs:
         run: node tools/pack.mjs
       - name: E2E assertions (every advertised interaction)
         run: node tests/e2e.test.mjs
+      - name: E2E pages (dashboard, options, popup)
+        run: node tests/pages.test.mjs
+      - name: Real-extension smoke test (MV3 worker in Chrome)
+        run: node tests/extension.test.mjs
       - name: Drive the demo composer and capture screenshots
         run: node demo/capture.mjs
       - name: Upload screenshots
