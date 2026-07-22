@@ -76,6 +76,14 @@
         disconnect() {},
       }),
       getURL: (p) => p,
+      openOptionsPage: () => {
+        window.__pcOpened = "options";
+      },
+    },
+    tabs: {
+      create: ({ url }) => {
+        window.__pcOpened = url;
+      },
     },
   };
 
