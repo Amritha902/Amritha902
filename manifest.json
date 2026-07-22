@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PromptComplete — Autocomplete for AI chats",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Inline ghost-text autocomplete for your prompts in Claude and ChatGPT. Press Tab to accept. Local or bring-your-own-key AI suggestions.",
   "icons": {
     "16": "icons/icon-16.png",
