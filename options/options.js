@@ -35,25 +35,31 @@ function syncAiVisibility() {
 }
 
 function save() {
-  const data = {
+  const prefs = {
     enabled: enabled.checked,
     mode: currentMode(),
-    apiKey: apiKey.value.trim(),
     model: model.value,
     improveModel: improveModel.value,
   };
-  chrome.storage.sync.set(data, flashSaved);
+  // Preferences sync across the user's browsers; the API key is a SECRET and
+  // stays in storage.local — this device only, never replicated.
+  chrome.storage.sync.set(prefs, flashSaved);
+  chrome.storage.local.set({ apiKey: apiKey.value.trim() });
 }
 
-// Load existing settings.
+// Load existing settings. The key reads from storage.local; a legacy value
+// left in storage.sync by earlier versions is shown once (the background
+// worker migrates and scrubs it on its next request).
 chrome.storage.sync.get(DEFAULTS, (s) => {
   enabled.checked = s.enabled;
-  apiKey.value = s.apiKey || "";
   model.value = s.model || "claude-haiku-4-5";
   improveModel.value = s.improveModel || "claude-sonnet-5";
   const radio = document.querySelector(`input[name="mode"][value="${s.mode}"]`);
   if (radio) radio.checked = true;
   syncAiVisibility();
+  chrome.storage.local.get({ apiKey: "" }, (loc) => {
+    apiKey.value = loc.apiKey || s.apiKey || "";
+  });
 });
 
 // Wire up change handlers.

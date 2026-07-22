@@ -107,6 +107,15 @@ await test("options: switching to AI mode reveals key settings and persists", as
   assert.ok(await page.locator("#ai-settings").isVisible(), "AI settings should reveal");
   const saved = await page.evaluate(() => window.__pcStore.sync.mode);
   assert.equal(saved, "ai", "mode should persist to storage.sync");
+  // The API key is a secret: it must land in storage.local, never sync.
+  await page.fill("#apiKey", "sk-ant-test-123");
+  await page.waitForTimeout(300);
+  const where = await page.evaluate(() => ({
+    local: window.__pcStore.local.apiKey,
+    sync: window.__pcStore.sync.apiKey,
+  }));
+  assert.equal(where.local, "sk-ant-test-123", "key should persist to storage.local");
+  assert.ok(!where.sync, "key must NOT be written to storage.sync");
   assert.equal(errors.length, 0, `page errors: ${errors.join("; ")}`);
   await page.context().close();
 });

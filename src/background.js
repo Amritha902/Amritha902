@@ -73,12 +73,24 @@ The very first character of your response must be the first character of the rew
 
 // --- Settings + session cache ---------------------------------------------
 async function getSettings() {
-  return chrome.storage.sync.get({
-    apiKey: "",
+  const prefs = await chrome.storage.sync.get({
+    apiKey: "", // legacy location — see migration below
     model: "claude-haiku-4-5",
     improveModel: "claude-sonnet-5",
     mode: "local",
   });
+  const local = await chrome.storage.local.get({ apiKey: "" });
+  // The API key is a secret: it belongs in storage.local (this device only),
+  // never storage.sync (replicated to every signed-in Chrome profile).
+  // Migrate any key stored by earlier versions, then scrub it from sync.
+  if (prefs.apiKey) {
+    if (!local.apiKey) {
+      await chrome.storage.local.set({ apiKey: prefs.apiKey });
+      local.apiKey = prefs.apiKey;
+    }
+    await chrome.storage.sync.remove("apiKey");
+  }
+  return { ...prefs, apiKey: local.apiKey };
 }
 
 const cache = new Map();
@@ -187,7 +199,10 @@ chrome.runtime.onConnect.addListener((port) => {
         signal
       );
       if (!signal.aborted) {
-        cacheSet(key, full || null);
+        // streamCompletion returns null on HTTP failure but "" on a
+        // successful empty stream — only successful outcomes are cacheable,
+        // otherwise one transient 429 poisons this prompt for the session.
+        if (full !== null) cacheSet(key, full || null);
         port.postMessage({ type: "done", reqId, completion: full || null });
       }
     } catch (_) {
@@ -205,6 +220,10 @@ chrome.runtime.onConnect.addListener((port) => {
 async function improve(draft) {
   const { apiKey, improveModel } = await getSettings();
   if (!apiKey) return { ok: false, reason: "no-key" };
+
+  // A draft containing a literal </draft> would break out of the delimiter
+  // and read as instructions. Neutralize the tags and bound the length.
+  draft = String(draft).replace(/<\/?draft>/gi, "").slice(0, 12000);
 
   const body = {
     model: improveModel || "claude-sonnet-5",
