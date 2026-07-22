@@ -376,8 +376,12 @@
     const push = (s) => {
       if (s && !out.includes(s) && !overlapsTail(text, s)) out.push(s);
     };
+    // The model predicts *from* the tail, so the overlap guard doesn't apply.
+    // No leading space either: historySuggestion only fires at a word
+    // boundary (text already ends in whitespace), so prepending one produced
+    // a double space on accept.
     const hist = await historySuggestion(text);
-    if (hist) out.push(" " + hist); // the model predicts *from* the tail — overlap guard doesn't apply
+    if (hist) out.push(hist);
     push(templateSuggestion(text));
     push(vectorTemplateSuggestion(text));
     return out;

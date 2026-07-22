@@ -32,6 +32,14 @@
   let candidates = [];
   let candidateIdx = 0;
 
+  // Stage-2 AI timer handle — must be cancellable, or a dismissed ghost
+  // resurrects when the timer fires on unchanged text.
+  let aiTimer = null;
+  // Accepting a suggestion inserts text, which fires an 'input' event we
+  // dispatched ourselves; without suppression that event re-runs the pipeline
+  // 120ms later and clobbers the remainder ghost after a partial accept.
+  let suppressInputUntil = 0;
+
   // --- Streaming AI tier over a long-lived port ----------------------------
   // The service worker streams Claude deltas back per request; a new request
   // (or port disconnect) aborts the in-flight one server-side.
@@ -79,6 +87,9 @@
     } else {
       candidates = [s, ...candidates];
       candidates.aiLed = true;
+      // Everything shifted down one slot — keep the user's cycled-to
+      // candidate (and the counter pill) pointing at the same suggestion.
+      if (candidateIdx > 0) candidateIdx++;
     }
     // Upgrade the visible ghost only if the user hasn't cycled away from
     // the top candidate.
@@ -105,7 +116,10 @@
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "sync") return;
     for (const [k, { newValue }] of Object.entries(changes)) settings[k] = newValue;
-    if (!settings.enabled) hideGhost();
+    if (!settings.enabled) {
+      hideGhost();
+      hideHealth();
+    }
   });
 
   // --- Element detection --------------------------------------------------
@@ -215,7 +229,10 @@
   function hideGhost() {
     currentSuggestion = null;
     candidates = [];
+    candidateIdx = 0;
     aiReq = null; // orphan any in-flight stream; the next request supersedes it
+    clearTimeout(aiTimer); // a dismissed ghost must stay dismissed
+    aiTimer = null;
     if (ghostEl) {
       ghostEl.style.display = "none";
       delete ghostEl.dataset.count;
@@ -254,7 +271,7 @@
     clearTimeout(debounceTimer);
     if (!settings.enabled) return;
     debounceTimer = setTimeout(async () => {
-      if (el !== activeInput || paletteActive()) return;
+      if (el !== activeInput || paletteActive()) return hideGhost();
       const text = readText(el);
       if (!caretAtEnd(el) || text.trim().length < 2) return hideGhost();
 
@@ -285,8 +302,11 @@
 
       // Stage 2: the AI call waits for a further quiet period so rapid
       // typing never sprays network requests (each would be aborted anyway).
+      // The handle is kept so hideGhost (Escape, blur, etc.) can cancel it.
       if (settings.mode === "ai") {
-        setTimeout(() => {
+        clearTimeout(aiTimer);
+        aiTimer = setTimeout(() => {
+          aiTimer = null;
           if (el === activeInput && readText(el) === text && caretAtEnd(el) && !paletteActive()) {
             requestAi(el, text);
           }
@@ -303,6 +323,10 @@
 
   /** Insert literal text at the caret (textarea or contenteditable). */
   function insertAtCaret(el, text) {
+    // The insertion below fires an 'input' event (dispatched for textareas,
+    // native for execCommand). Mark it so the input listener doesn't treat
+    // our own insertion as user typing and clobber the remainder ghost.
+    suppressInputUntil = Date.now() + 80;
     if (el.tagName === "TEXTAREA") {
       const start = el.value.length;
       el.value = el.value + text;
@@ -332,11 +356,10 @@
     if (!currentSuggestion) return false;
     const text = currentSuggestion;
     insertAtCaret(el, text);
-    bumpStat("accepted");
     // Value accounting: an accepted suggestion of length L saved ~L
     // keystrokes. The dashboard derives time saved (avg typing speed) and
     // tokens auto-completed from this single honest primitive.
-    bumpStat("chars_saved", text.length);
+    bumpStats({ accepted: 1, chars_saved: text.length });
     currentSuggestion = null;
     candidates = [];
     if (ghostEl) ghostEl.style.display = "none";
@@ -361,6 +384,10 @@
     const rest = currentSuggestion.slice(m[0].length);
     if (rest.trim()) {
       currentSuggestion = rest;
+      // The other candidates' first word was just consumed — they are stale
+      // now. Only the remainder is a valid candidate.
+      candidates = [rest];
+      candidateIdx = 0;
       // Re-anchor the ghost at the new caret position.
       showGhost(el, rest);
       updateCounterPill();
@@ -388,6 +415,14 @@
     "input",
     (e) => {
       if (e.target === activeInput && isComposer(e.target)) {
+        // Self-generated event (suggestion just inserted): keep the ghost
+        // exactly as the accept path left it, but let the health ring track
+        // the new text.
+        if (Date.now() < suppressInputUntil) {
+          suppressInputUntil = 0;
+          updateHealth(e.target);
+          return;
+        }
         requestSuggestion(e.target);
         updateHealth(e.target);
       }
@@ -417,11 +452,15 @@
         acceptWord(activeInput);
         return;
       }
-      // Cycle alternative candidates: Alt+] / Alt+[.
-      if (e.altKey && (e.key === "]" || e.key === "[") && candidates.length > 1) {
+      // Cycle alternative candidates: Alt+] / Alt+[. Match the PHYSICAL key
+      // (e.code) — on macOS, Option+] produces "'" or "‘" in e.key, so a
+      // key-based match never fires there.
+      const cycleFwd = e.code === "BracketRight" || e.key === "]";
+      const cycleBack = e.code === "BracketLeft" || e.key === "[";
+      if (e.altKey && (cycleFwd || cycleBack) && candidates.length > 1) {
         e.preventDefault();
         e.stopPropagation();
-        cycleCandidate(e.key === "]" ? 1 : -1);
+        cycleCandidate(cycleFwd ? 1 : -1);
         return;
       }
       // Dismiss with Escape.
@@ -431,7 +470,9 @@
         return;
       }
       // Learn from the submitted prompt (Enter without Shift is "send").
-      if (e.key === "Enter" && !e.shiftKey) {
+      // Enter during IME composition commits a candidate, not the message —
+      // never treat that as a send.
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
         const text = readText(activeInput);
         if (text && window.PromptComplete) {
           window.PromptComplete.learn(text);
@@ -464,23 +505,46 @@
 
   const todayKey = () => new Date().toISOString().slice(0, 10);
 
-  function bumpStat(field, by = 1) {
+  // Stat writes are get→mutate→set and therefore NOT atomic: two back-to-back
+  // bumps both read the pre-increment snapshot and the second write clobbers
+  // the first (deterministically losing e.g. the "accepted" count). All bumps
+  // therefore accumulate into a pending-delta map and flush strictly one
+  // get/set pair at a time.
+  let pendingBumps = null;
+  let flushingBumps = false;
+
+  function bumpStats(deltas) {
+    pendingBumps = pendingBumps || {};
+    for (const [k, v] of Object.entries(deltas)) pendingBumps[k] = (pendingBumps[k] || 0) + v;
+    flushBumps();
+  }
+  const bumpStat = (field, by = 1) => bumpStats({ [field]: by });
+
+  function flushBumps() {
+    if (flushingBumps || !pendingBumps) return;
+    flushingBumps = true;
+    const batch = pendingBumps;
+    pendingBumps = null;
     try {
       chrome.storage.local.get([STATS_KEY, DAILY_KEY], (data) => {
         const s = data[STATS_KEY] || { shown: 0, accepted: 0, dismissed: 0 };
-        s[field] = (s[field] || 0) + by;
-
         const daily = data[DAILY_KEY] || {};
         const day = (daily[todayKey()] = daily[todayKey()] || { shown: 0, accepted: 0, dismissed: 0 });
-        day[field] = (day[field] || 0) + by;
+        for (const [field, by] of Object.entries(batch)) {
+          s[field] = (s[field] || 0) + by;
+          day[field] = (day[field] || 0) + by;
+        }
         // Retention: drop buckets older than the window (keys sort by date).
         const days = Object.keys(daily).sort();
         while (days.length > DAILY_RETENTION) delete daily[days.shift()];
 
-        chrome.storage.local.set({ [STATS_KEY]: s, [DAILY_KEY]: daily });
+        chrome.storage.local.set({ [STATS_KEY]: s, [DAILY_KEY]: daily }, () => {
+          flushingBumps = false;
+          flushBumps(); // drain anything that accumulated mid-flight
+        });
       });
     } catch (_) {
-      /* non-fatal */
+      flushingBumps = false; // non-fatal; drop the batch
     }
   }
 
@@ -571,7 +635,9 @@
     const ring = ensureRing();
     const rect = el.getBoundingClientRect();
     ring.style.left = rect.right - 34 + "px";
-    ring.style.top = rect.top - 34 + "px";
+    // Clamp inside the viewport; fall back to just inside the composer when
+    // there's no room above it.
+    ring.style.top = (rect.top >= 42 ? rect.top - 34 : rect.top + 4) + "px";
     ring.style.display = "flex";
 
     const C = 2 * Math.PI * 15.5;
@@ -673,9 +739,51 @@
     }
   }
 
-  window.addEventListener("scroll", hideGhost, true);
-  window.addEventListener("resize", hideGhost, true);
+  // Scroll/resize invalidate every position:fixed overlay's coordinates —
+  // hide them all (they re-anchor on the next input).
+  const hideOverlays = () => {
+    hideGhost();
+    hideHealth();
+  };
+  window.addEventListener("scroll", hideOverlays, true);
+  window.addEventListener("resize", hideOverlays, true);
   document.addEventListener("selectionchange", () => {
     if (activeInput && currentSuggestion && !caretAtEnd(activeInput)) hideGhost();
   });
+
+  // Leaving the composer hides the overlays — unless the blur was caused by
+  // clicking one of our own surfaces (ring, panel, palette). Those are
+  // mostly non-focusable divs, so relatedTarget is null for them; the
+  // pointer-down target is the reliable signal.
+  let overlayPointerDown = false;
+  document.addEventListener(
+    "mousedown",
+    (e) => {
+      const t = e.target;
+      overlayPointerDown = !!(
+        (ringEl && ringEl.contains(t)) ||
+        (panelEl && panelEl.contains(t)) ||
+        (t.closest && t.closest(".pc-palette"))
+      );
+    },
+    true
+  );
+  document.addEventListener(
+    "focusout",
+    (e) => {
+      if (e.target !== activeInput) return;
+      if (overlayPointerDown) return; // interacting with our own UI
+      const to = e.relatedTarget;
+      if (
+        to &&
+        ((ringEl && ringEl.contains(to)) ||
+          (panelEl && panelEl.contains(to)) ||
+          (to.closest && to.closest(".pc-palette")))
+      ) {
+        return;
+      }
+      hideOverlays();
+    },
+    true
+  );
 })();
