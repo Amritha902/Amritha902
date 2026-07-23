@@ -52,11 +52,17 @@ async function test(name, fn) {
   }
 }
 
-let worker = ctx.serviceWorkers()[0];
+let worker = null;
 
 await test("MV3 service worker registers from the real manifest", async () => {
-  if (!worker) worker = await ctx.waitForEvent("serviceworker", { timeout: 10000 });
-  assert.ok(worker.url().includes("background.js"), `unexpected worker url: ${worker?.url()}`);
+  // Poll rather than waitForEvent: the worker can register in the gap
+  // between a snapshot check and attaching the event listener (raced in CI).
+  for (let i = 0; i < 60 && !worker; i++) {
+    worker = ctx.serviceWorkers()[0] || null;
+    if (!worker) await new Promise((r) => setTimeout(r, 500));
+  }
+  assert.ok(worker, "service worker never registered within 30s");
+  assert.ok(worker.url().includes("background.js"), `unexpected worker url: ${worker.url()}`);
 });
 
 await test("worker answers pc:complete without a key (graceful, no crash)", async () => {
