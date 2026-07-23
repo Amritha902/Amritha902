@@ -75,6 +75,39 @@
     return null;
   }
 
+  // ---- Word completion (the innermost tier) -------------------------------
+  // Finish the WORD being typed — "h" → "hello" — the way Smart Compose and
+  // Copilot do. Sources, in order: the user's own vocabulary (unigram counts
+  // learned from sent prompts — real personalization), then the frequency-
+  // ranked dictionary (window.PromptLexicon, from repair.js). Returns the
+  // REMAINDER to ghost at the caret, or null.
+  function wordCompletion(text) {
+    const m = text.match(/([a-zA-Z']+)$/);
+    if (!m) return null;
+    const partial = m[1].toLowerCase();
+
+    // The user's own words first: any prefix length, needs 2+ uses. A
+    // candidate must also beat the typed word's OWN count — if the user has
+    // already finished one of their frequent words, stay silent.
+    const ownCount = (wordsCache && wordsCache[partial]) || 0;
+    let best = null;
+    let bestCount = ownCount;
+    if (wordsCache) {
+      for (const [w, c] of Object.entries(wordsCache)) {
+        if (c >= 2 && c > bestCount && w.length > partial.length && w.startsWith(partial)) {
+          best = w;
+          bestCount = c;
+        }
+      }
+    }
+    // Dictionary fallback: 2+ typed chars, completion must add 2+ chars.
+    if (!best && window.PromptLexicon) {
+      best = window.PromptLexicon.bestForPrefix(partial, 2);
+    }
+    if (!best) return null;
+    return best.slice(partial.length);
+  }
+
   // Generic last-line guard for every tier: reject a candidate whose opening
   // words repeat the tail of what the user already typed ("…to my manager" +
   // " to {recipient}…").
@@ -172,6 +205,7 @@
   //           every bad ghost costs user trust).
   const HISTORY_KEY = "pc_ngrams";
   const CONT_KEY = "pc_cont"; // continuation counts for Kneser-Ney back-off
+  const WORDS_KEY = "pc_words"; // unigram counts — powers word completion
   const MAX_NGRAMS = 4000;
   const KN_DISCOUNT = 0.75; // absolute discount D (standard value)
   const CONFIDENCE_MIN = 0.45; // smoothed P(w|h) below this → stop emitting
@@ -180,16 +214,19 @@
 
   let ngramCache = null;
   let contCache = null; // { counts: {word: N₁₊(·w)}, pairs: Σ_v N₁₊(·v) }
+  let wordsCache = null; // { word: count } — the user's own vocabulary
 
   async function loadNgrams() {
     if (ngramCache) return ngramCache;
     try {
-      const data = await chrome.storage.local.get([HISTORY_KEY, CONT_KEY]);
+      const data = await chrome.storage.local.get([HISTORY_KEY, CONT_KEY, WORDS_KEY]);
       ngramCache = data[HISTORY_KEY] || {};
       contCache = data[CONT_KEY] || { counts: {}, pairs: 0 };
+      wordsCache = data[WORDS_KEY] || {};
     } catch (_) {
       ngramCache = {};
       contCache = { counts: {}, pairs: 0 };
+      wordsCache = {};
     }
     return ngramCache;
   }
@@ -286,8 +323,13 @@
       for (const k of keys.slice(0, keys.length - MAX_NGRAMS)) delete grams[k];
     }
     ngramCache = grams;
+    // Unigrams: every word the user actually types, counted — the substrate
+    // for personalized word completion ("h" → the user's own "hello").
+    for (const t of tokens) {
+      if (t.length >= 2) wordsCache[t] = (wordsCache[t] || 0) + 1;
+    }
     try {
-      await chrome.storage.local.set({ [HISTORY_KEY]: grams, [CONT_KEY]: contCache });
+      await chrome.storage.local.set({ [HISTORY_KEY]: grams, [CONT_KEY]: contCache, [WORDS_KEY]: wordsCache });
     } catch (_) {
       /* storage full or unavailable — non-fatal */
     }
@@ -381,7 +423,7 @@
 
   /** All distinct local candidates, best tier first. */
   async function getCandidates(text) {
-    if (!text || text.trim().length < 2) return [];
+    if (!text || !text.trim()) return [];
     const out = [];
     const push = (s) => {
       if (s && !out.includes(s) && !overlapsTail(text, s)) out.push(s);
@@ -390,6 +432,15 @@
     // No leading space either: historySuggestion only fires at a word
     // boundary (text already ends in whitespace), so prepending one produced
     // a double space on accept.
+    // Mid-word: complete the word first (phrase tiers need a boundary).
+    if (!/\s$/.test(text)) {
+      await loadNgrams(); // wordsCache rides the same storage load
+      const wc = wordCompletion(text);
+      if (wc) out.push(wc);
+    }
+    // Phrase tiers need at least a couple of characters of signal; a single
+    // letter can still get a WORD completion above ("h" → the user's "hello").
+    if (text.trim().length < 2) return out;
     const hist = await historySuggestion(text);
     if (hist) out.push(hist);
     push(templateSuggestion(text));

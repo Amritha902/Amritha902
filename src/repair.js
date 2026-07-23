@@ -14,10 +14,12 @@
 (function () {
   "use strict";
 
-  // Frequency-ordered common-word list (most frequent first). Rank = score.
-  // Compact by design: enough coverage for prompt-box vocabulary, including
-  // informal and AI/tech words people actually type at an assistant.
-  const WORDS = (
+  // Frequency-ordered word list (most frequent first). Rank = score.
+  // Primary source: src/lexicon.js — ~10k words generated from the REAL
+  // google-10000-english dataset (Google Web Trillion Word Corpus; see
+  // tools/build-lexicon.mjs for provenance). The compact inline list below
+  // is only a fallback when lexicon.js isn't loaded (e.g. isolated tests).
+  const FALLBACK = (
     "the of and to in a is that for it as was with be by on not he i this are or his from at which but have an they you were her " +
     "she all would there their we him been has when who will no more if out so up said what its about than into them can only other " +
     "time new some could these two may first then do any like my should now people over just also good those how very make our work " +
@@ -45,6 +47,9 @@
     "introduction conclusion body header title heading name names date dates today tomorrow yesterday morning afternoon evening " +
     "night time minute minutes hour hours quick quickly slow carefully thorough thoroughly check checking verify important urgent"
   ).split(/\s+/);
+
+  const WORDS =
+    window.PromptWords && window.PromptWords.length ? window.PromptWords : FALLBACK;
 
   const RANK = new Map();
   WORDS.forEach((w, i) => {
@@ -150,5 +155,29 @@
     return { from, to: from + tail.length, fixed };
   }
 
+  /**
+   * Best dictionary completion for a typed prefix (frequency-ranked), or
+   * null. `minExtra` guards against pointless one-letter completions.
+   * Powers the word-completion ghost in suggest.js.
+   */
+  function bestForPrefix(prefix, minExtra = 2) {
+    const p = prefix.toLowerCase();
+    if (p.length < 2) return null;
+    let best = null;
+    let bestRank = Infinity;
+    for (const [w, rank] of RANK) {
+      if (w.length >= p.length + minExtra && w.startsWith(p) && rank < bestRank) {
+        best = w;
+        bestRank = rank;
+      }
+    }
+    // The prefix may already BE the finished word ("explain" → don't ghost
+    // "ed"). Only extend when the longer word is more frequent than what the
+    // user has typed.
+    if (best && RANK.has(p) && RANK.get(p) < bestRank) return null;
+    return best;
+  }
+
   window.PromptRepair = { repairTail, isKnown };
+  window.PromptLexicon = { bestForPrefix };
 })();

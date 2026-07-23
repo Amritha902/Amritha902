@@ -313,6 +313,9 @@
 
   function maybeShowRepair(el) {
     if (!window.PromptRepair) return;
+    // A live ghost owns the caret area — mid-word completions ("underst" →
+    // "anding") would otherwise fight a chip flagging the same partial word.
+    if (currentSuggestion) return hideRepair();
     const text = repairText(el);
     const r = window.PromptRepair.repairTail(text);
     if (!r) return hideRepair();
@@ -387,7 +390,9 @@
         return hideGhost();
       }
       const text = readText(el);
-      if (!caretAtEnd(el) || text.trim().length < 2) return hideGhost();
+      // One typed letter is enough — the word-completion tier can finish it
+      // from the user's own vocabulary ("h" → "hello").
+      if (!caretAtEnd(el) || !text.trim()) return hideGhost();
 
       if (abortCtl) abortCtl.abort();
       abortCtl = new AbortController();

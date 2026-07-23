@@ -17,6 +17,9 @@ Compose. Your editor has Copilot. The prompt box you type into every day has…
 nothing. PromptComplete turns it into an IDE for prompts:
 
 - **Ghost-text autocomplete** at the caret — `Tab` accepts, like Smart Compose.
+- **Word completion that knows *you*** — type `h` and it ghosts `ello` because
+  *you* say "hello" a lot: your own vocabulary (learned on-device from prompts
+  you send) is checked first, then a real frequency-ranked English lexicon.
 - **Prompt Health ring** — a live score of your draft against prompt-engineering
   best practices, with the missing ingredient named.
 - **Intent Compiler** — one click turns a rough draft ("fix my resume idk make it
@@ -51,6 +54,13 @@ This is a working applied-ML system, not a snippet list:
   support ≥ 2: silence beats a wrong guess (precision over recall, by design).
 - **A built-in eval loop** — acceptance rate (the canonical autocomplete metric),
   daily time-series trend, descriptive statistics, and one-click dataset export.
+- **A real data source, reproducibly** — the spelling/word-completion lexicon
+  (`src/lexicon.js`, ~10k words) is generated from the
+  [google-10000-english](https://github.com/first20hours/google-10000-english)
+  frequency list, itself derived from Google's Web Trillion Word Corpus
+  (Brants & Franz, LDC2006T13). `node tools/build-lexicon.mjs` re-downloads
+  the dataset and rebuilds the file — provenance in the generated header, no
+  hand-invented frequencies.
 
 Full design + formulas: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -87,8 +97,8 @@ Anthropic API key. Ghost completions default to `claude-haiku-4-5` (latency);
 the Intent Compiler defaults to `claude-sonnet-5` (quality). Your key lives in
 your browser's extension storage and is sent only to `api.anthropic.com`.
 
-Run the tests: `npm test` (18 unit tests, zero dependencies) and
-`npm run test:e2e` (21 Playwright assertions: every keyboard interaction in
+Run the tests: `npm test` (23 unit tests, zero dependencies) and
+`npm run test:e2e` (26 Playwright assertions: every keyboard interaction in
 the demo composer, all three extension pages, and a real-Chrome load of the
 unpacked extension with its MV3 service worker).
 
@@ -131,6 +141,7 @@ frames → an animated GIF assembled by our own dependency-free GIF89a encoder
 | Suggestion engine | `src/suggest.js` | KN language model + curated templates + vector-space IR |
 | Health engine | `src/health.js` | 5-dimension best-practice scoring, length-scaled |
 | Garble repair | `src/repair.js` | Norvig-style corrector: edit-distance candidates ranked by frequency |
+| Lexicon (generated) | `src/lexicon.js` | ~10k words from the google-10000-english dataset; rebuild via `tools/build-lexicon.mjs` |
 | Scaffolds | `src/templates.js`, `src/palette.js` | Curated prompt patterns + `/` palette + snippet mode |
 | Service worker | `src/background.js` | Streaming completions over a port (real abort), Intent Compiler |
 | Insights | `dashboard/` | Acceptance analytics, time series, Prompt Lab, export |

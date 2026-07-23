@@ -230,6 +230,33 @@ await test("demo shows the why-no-suggestion hint on unknown lead-ins", async ()
   await page.waitForSelector("#nsh:not([hidden])", { timeout: 4000 });
 });
 
+// --- Word completion (mid-word tier) ---------------------------------------
+
+await test("one letter ghosts the user's own word and Tab completes it (h → hello)", async () => {
+  await fresh();
+  await page.evaluate(async () => {
+    await window.PromptComplete.learn("hello can you help me with my report");
+    await window.PromptComplete.learn("hello i need a summary of this paper");
+  });
+  await typeText("h");
+  assert.ok(await ghostVisible(), "single letter should ghost a personal word");
+  const g = await page.locator(".pc-ghost").textContent();
+  assert.ok(g.startsWith("ello"), `expected "ello…", got ${JSON.stringify(g)}`);
+  await page.keyboard.press("Tab");
+  const t = (await text()).trim();
+  assert.ok(t.startsWith("hello"), `Tab should complete to hello, got ${JSON.stringify(t)}`);
+});
+
+await test("dictionary completes an unseen prefix and suppresses the repair chip", async () => {
+  await fresh();
+  await typeText("underst");
+  assert.ok(await ghostVisible(), "dictionary tier should ghost mid-word");
+  const g = await page.locator(".pc-ghost").textContent();
+  assert.ok(g.startsWith("and"), `expected "and…", got ${JSON.stringify(g)}`);
+  const chipVisible = await page.locator(".pc-repair").isVisible().catch(() => false);
+  assert.equal(chipVisible, false, "repair chip must yield to an active ghost");
+});
+
 // --- Garble repair ("did you mean") ---------------------------------------
 
 await test("garbled tail shows a repair chip and Ctrl+. applies it", async () => {

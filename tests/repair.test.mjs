@@ -10,6 +10,8 @@ import { dirname, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 globalThis.window = {};
+// Real-corpus lexicon first — tests run against the ranks the extension ships.
+eval(readFileSync(join(here, "..", "src", "lexicon.js"), "utf8"));
 eval(readFileSync(join(here, "..", "src", "repair.js"), "utf8"));
 const R = window.PromptRepair;
 

@@ -27,6 +27,7 @@
         "https://chat.openai.com/*"
       ],
       "js": [
+        "src/lexicon.js",
         "src/templates.js",
         "src/suggest.js",
         "src/health.js",

@@ -26,6 +26,12 @@ globalThis.chrome = {
   },
   runtime: { sendMessage: (_m, cb) => cb && cb(null), lastError: null },
 };
+// Load order mirrors the manifest: lexicon.js (real-corpus word ranks) →
+// repair.js (exports window.PromptLexicon) → suggest.js (word completion).
+// eslint-disable-next-line no-eval
+eval(readFileSync(join(root, "src/lexicon.js"), "utf8"));
+// eslint-disable-next-line no-eval
+eval(readFileSync(join(root, "src/repair.js"), "utf8"));
 // eslint-disable-next-line no-eval
 eval(readFileSync(join(root, "src/suggest.js"), "utf8"));
 const PC = window.PromptComplete;
@@ -124,6 +130,45 @@ test("template still fires when the typed text is exactly the trigger", async ()
   store = {};
   const s = await PC.getSuggestion("write an email", { mode: "local" });
   assert.ok(s && /recipient/.test(s), `trigger-only text should still complete, got ${JSON.stringify(s)}`);
+});
+
+// --- Word completion (mid-word tier) -----------------------------------------
+test("one typed letter completes from the user's OWN vocabulary (h → hello)", async () => {
+  store = {};
+  await PC.learn("hello can you help me with my report");
+  await PC.learn("hello i need a summary of this paper");
+  const s = await PC.getSuggestion("h", { mode: "local" });
+  assert.equal(s, "ello", `personal unigram should finish the word, got ${JSON.stringify(s)}`);
+});
+
+test("word completion inside a sentence, not just at the start", async () => {
+  store = {};
+  await PC.learn("hello can you help me with my report");
+  await PC.learn("hello i need a summary of this paper");
+  const s = await PC.getSuggestion("i want to say h", { mode: "local" });
+  assert.equal(s, "ello", `mid-sentence prefix should complete, got ${JSON.stringify(s)}`);
+});
+
+test("dictionary fallback completes an unseen prefix (underst → …)", async () => {
+  store = {}; // no personal vocabulary at all
+  const s = await PC.getSuggestion("underst", { mode: "local" });
+  assert.ok(s && /^and/.test(s), `dictionary should extend the word, got ${JSON.stringify(s)}`);
+});
+
+test("personal vocabulary outranks the dictionary for the same prefix", async () => {
+  store = {};
+  await PC.learn("check the computational budget for the computational experiments");
+  await PC.learn("rerun the computational benchmark and the computational profile");
+  const s = await PC.getSuggestion("comp", { mode: "local" });
+  assert.equal(s, "utational", `user's own word must win, got ${JSON.stringify(s)}`);
+});
+
+test("no word completion after a trailing space (phrase tiers own that)", async () => {
+  store = {};
+  await PC.learn("hello can you help me with my report");
+  await PC.learn("hello i need a summary of this paper");
+  const s = await PC.getSuggestion("h ", { mode: "local" });
+  assert.notEqual(s, "ello", "boundary must not re-complete the finished word");
 });
 
 // --- Runner -----------------------------------------------------------------
