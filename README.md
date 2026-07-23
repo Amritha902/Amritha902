@@ -7,6 +7,11 @@ meter, one-click prompt compilation, and a local experiment lab. Claude-first.**
 
 ![PromptComplete in action: ghost text, Tab accept, and the / scaffold palette](demo/shots/hero.gif)
 
+**The honest number** — the same prompt typed by hand vs. with PromptComplete,
+counted live by a real keydown listener during the recording (nothing scripted):
+
+![Real comparison: 78 keystrokes by hand vs 15 with PromptComplete — 81% less typing](demo/shots/compare.gif)
+
 Typing a good prompt is the slowest part of using an AI assistant. Gmail has Smart
 Compose. Your editor has Copilot. The prompt box you type into every day has…
 nothing. PromptComplete turns it into an IDE for prompts:
