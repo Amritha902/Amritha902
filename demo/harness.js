@@ -13,6 +13,7 @@
   const store = { sync: {}, local: {} };
   const changeListeners = [];
 
+  // Like real chrome.storage: callback style AND promise style (await get()).
   function area(name) {
     return {
       get(defaults, cb) {
@@ -26,7 +27,11 @@
           out = { ...(defaults || {}) };
           for (const k of Object.keys(store[name])) out[k] = store[name][k];
         }
-        queueMicrotask(() => cb(out));
+        if (typeof cb === "function") {
+          queueMicrotask(() => cb(out));
+          return;
+        }
+        return Promise.resolve(out);
       },
       set(obj, cb) {
         const changes = {};
@@ -34,10 +39,25 @@
           changes[k] = { oldValue: store[name][k], newValue: v };
           store[name][k] = v;
         }
-        queueMicrotask(() => {
+        const fire = () => {
           for (const l of changeListeners) l(changes, name);
-          if (cb) cb();
-        });
+        };
+        if (typeof cb === "function") {
+          queueMicrotask(() => {
+            fire();
+            cb();
+          });
+          return;
+        }
+        return Promise.resolve().then(fire);
+      },
+      remove(keys, cb) {
+        for (const k of [].concat(keys)) delete store[name][k];
+        if (typeof cb === "function") {
+          queueMicrotask(cb);
+          return;
+        }
+        return Promise.resolve();
       },
     };
   }
