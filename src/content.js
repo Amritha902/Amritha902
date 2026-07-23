@@ -225,7 +225,12 @@
     g.style.font = cs.font;
     g.style.fontSize = cs.fontSize;
     g.style.fontFamily = cs.fontFamily;
-    g.style.lineHeight = cs.lineHeight;
+    // Baseline alignment: the caret rect is the glyph box, which is shorter
+    // than the input's line box when line-height > 1. Copying the input's
+    // line-height would re-add that half-leading INSIDE the ghost and render
+    // the grey text a few pixels lower than the typed text. Making the
+    // ghost's line box exactly the caret box keeps the baselines level.
+    g.style.lineHeight = (rect.height || parseFloat(cs.lineHeight) || 20) + "px";
     g.style.left = rect.left + "px";
     g.style.top = rect.top + "px";
     g.style.height = rect.height + "px";
