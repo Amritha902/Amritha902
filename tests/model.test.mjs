@@ -246,6 +246,44 @@ test("one-letter dictionary extension is a valid completion (creat → create)",
   assert.ok(s && s.startsWith("e"), `+1-char completion must not be skipped, got ${JSON.stringify(s)}`);
 });
 
+test("agreement: modals take the base form (i can creat → create)", async () => {
+  store = {};
+  const s = await PC.getSuggestion("i can creat", { mode: "local" });
+  assert.equal(s, "e", `modal + base form, got ${JSON.stringify(s)}`);
+});
+
+test("agreement: 'am' takes the progressive (i am creat → creating)", async () => {
+  store = {};
+  const s = await PC.getSuggestion("i am creat", { mode: "local" });
+  assert.equal(s, "ing", `first-person progressive, got ${JSON.stringify(s)}`);
+});
+
+test("agreement: perfect aspect takes the participle (we have creat → created)", async () => {
+  store = {};
+  const s = await PC.getSuggestion("we have creat", { mode: "local" });
+  assert.equal(s, "ed", `have + past participle, got ${JSON.stringify(s)}`);
+});
+
+test("agreement: indefinite article takes the singular (a sugg → suggestion)", async () => {
+  store = {};
+  // "suggestions" (rank 2570) beats "suggestion" (6119) on raw frequency —
+  // the article rule must override frequency.
+  const s = await PC.getSuggestion("give me a sugg", { mode: "local" });
+  assert.equal(s, "estion", `no plural after "a", got ${JSON.stringify(s)}`);
+});
+
+test("agreement: never completes into a repetition of the previous word", async () => {
+  store = {};
+  const s = await PC.getSuggestion("explain the th", { mode: "local" });
+  assert.notEqual(s, "e", `"the the" must be impossible, got ${JSON.stringify(s)}`);
+});
+
+test("all-caps typing continues in all-caps (CREAT → E)", async () => {
+  store = {};
+  const s = await PC.getSuggestion("I WANT TO CREAT", { mode: "local" });
+  assert.equal(s, "E", `caps should continue in caps, got ${JSON.stringify(s)}`);
+});
+
 // --- Leading prompts (guidance tier) -----------------------------------------
 test("leading tier guides an original draft the predictors have never seen", async () => {
   store = {};

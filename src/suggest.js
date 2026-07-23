@@ -88,66 +88,102 @@
   // learned from sent prompts — real personalization), then the frequency-
   // ranked dictionary (window.PromptLexicon, from repair.js). Returns the
   // REMAINDER to ghost at the caret, or null.
+  // ---- Agreement engine: which word FORMS fit after the previous word? ----
+  // Frequency has no grammar; these constraints do. Each rule maps a
+  // function word to a predicate over candidate forms, and every completion
+  // source (context model, personal vocabulary, dictionary) must satisfy it —
+  // with graceful fallback when no candidate of the right form exists.
+  const isBaseForm = (w) => !/(?:ed|ing)$/.test(w) && !(/s$/.test(w) && !/ss$/.test(w));
+  const isSingular = (w) => !(/s$/.test(w) && !/ss$/.test(w));
+  const MODALS = new Set([
+    "can", "could", "will", "would", "should", "must", "may", "might", "shall",
+    "cannot", "cant", "dont", "doesnt", "didnt", "wont", "couldnt", "wouldnt",
+    "shouldnt", "please", "can't", "don't", "doesn't", "didn't", "won't",
+    "couldn't", "wouldn't", "shouldn't",
+  ]);
+  const BE_FORMS = new Set(["am", "is", "are", "was", "were", "been", "being"]);
+  const HAVE_FORMS = new Set(["have", "has", "had"]);
+
+  function formConstraint(prevWord) {
+    const p = (prevWord || "").toLowerCase();
+    if (!p) return null;
+    // "to create" / "should create" — infinitives and modals take base forms.
+    if (p === "to" || MODALS.has(p)) return isBaseForm;
+    // "am creating" / "was created" — be-forms take participles, never bare
+    // base verbs ("i am creat" → "creating", not "create"). First-person
+    // progressive ("am", "being") is -ing specifically.
+    if (p === "am" || p === "being") return (w) => /ing$/.test(w);
+    if (BE_FORMS.has(p)) return (w) => /(?:ed|ing)$/.test(w);
+    // "have created" — perfect aspect takes the past participle.
+    if (HAVE_FORMS.has(p)) return (w) => /ed$/.test(w);
+    // "a suggestion" — indefinite articles take singular, noun-shaped words:
+    // both "a suggestions" (plural) and "a suggest" (bare verb) are wrong.
+    if (p === "a" || p === "an") {
+      const NOUNISH = /(?:tion|sion|ment|ness|ity|ance|ence|ship|ist|ism|ure|age|ing|er|or|ary|ery|el|le|ow|ay)$/;
+      return (w) => isSingular(w) && NOUNISH.test(w);
+    }
+    return null;
+  }
+
   function wordCompletion(text) {
     const m = text.match(/([a-zA-Z']+)$/);
     if (!m) return null;
     const partial = m[1].toLowerCase();
+    const prevWord = (text.slice(0, m.index).match(/([a-zA-Z']+)\s+$/) || [])[1];
+    const constraint = formConstraint(prevWord);
+    // Never complete into a repetition of the previous word ("the the").
+    const prev = (prevWord || "").toLowerCase();
+    const fits = (w) => w !== prev && (!constraint || constraint(w));
+    // All-caps typing continues in all-caps ("CREAT" → "E", not "e").
+    const shout = partial.length > 1 && m[1] === m[1].toUpperCase();
+    const emit = (word) => {
+      const rest = word.slice(partial.length);
+      return shout ? rest.toUpperCase() : rest;
+    };
 
     // Context first: given the words BEFORE the partial, does the n-gram
     // model already know what comes next here? "whats the pl" → the model
     // has seen "whats the plan", so "plan" beats the globally-more-frequent
-    // "plot". Gated on the conditional probability among prefix matches.
+    // "plot". Gated on the conditional probability among prefix matches —
+    // and the pick must still satisfy the grammatical constraint.
     const ctx = stemAll(normalize(text.slice(0, m.index)));
     if (ctx.length >= 2 && ngramCache) {
       const pred = predictNext(ngramCache, ctx, partial);
-      if (pred && pred.support >= SUPPORT_MIN && pred.pCond >= CONFIDENCE_MIN) {
-        return pred.w.slice(partial.length);
+      if (pred && pred.support >= SUPPORT_MIN && pred.pCond >= CONFIDENCE_MIN && fits(pred.w)) {
+        return emit(pred.w);
       }
     }
 
-    // Grammar guard: after the infinitive/preposition "to", an inflected
-    // completion is usually wrong — "i want to creat" must become "create",
-    // never "created". Prefer base forms there (fall back if none exists).
-    const prevWord = (text.slice(0, m.index).match(/([a-zA-Z']+)\s+$/) || [])[1];
-    const preferBase = prevWord && prevWord.toLowerCase() === "to";
-    const isBase = (w) => !/(?:ed|ing)$/.test(w) && !(/s$/.test(w) && !/ss$/.test(w));
-
-    // The user's own words first: any prefix length, needs 2+ uses. A
+    // The user's own words next: any prefix length, needs 2+ uses. A
     // candidate must also beat the typed word's OWN count — if the user has
-    // already finished one of their frequent words, stay silent.
+    // already finished one of their frequent words, stay silent. Track the
+    // best fitting and best unconstrained candidates separately.
     const ownCount = (wordsCache && wordsCache[partial]) || 0;
-    let best = null;
-    let bestCount = ownCount;
-    let bestBase = null;
-    let bestBaseCount = ownCount;
+    let bestAny = null;
+    let bestAnyCount = ownCount;
+    let bestFit = null;
+    let bestFitCount = ownCount;
     if (wordsCache) {
       for (const [w, c] of Object.entries(wordsCache)) {
-        if (c >= 2 && w.length > partial.length && w.startsWith(partial)) {
-          if (c > bestCount) {
-            best = w;
-            bestCount = c;
+        if (c >= 2 && w.length > partial.length && w.startsWith(partial) && w !== prev) {
+          if (c > bestAnyCount) {
+            bestAny = w;
+            bestAnyCount = c;
           }
-          if (isBase(w) && c > bestBaseCount) {
-            bestBase = w;
-            bestBaseCount = c;
+          if (fits(w) && c > bestFitCount) {
+            bestFit = w;
+            bestFitCount = c;
           }
         }
       }
     }
-    if (preferBase) {
-      // Base form wins wherever one exists: own vocabulary first, then the
-      // dictionary — only then fall back to an inflected match.
-      best =
-        bestBase ||
-        (window.PromptLexicon && window.PromptLexicon.bestForPrefix(partial, 1, isBase)) ||
-        best;
-    }
-    // Dictionary fallback: 2+ typed chars, any real extension (even +1 char).
-    if (!best && window.PromptLexicon) {
-      best = window.PromptLexicon.bestForPrefix(partial, 1);
-    }
-    if (!best) return null;
-    return best.slice(partial.length);
+    // Resolution order: a grammatically fitting word wins wherever it lives
+    // (own vocabulary, then dictionary); only then fall back to an
+    // unconstrained match rather than going silent.
+    const dict = (f) =>
+      window.PromptLexicon ? window.PromptLexicon.bestForPrefix(partial, 1, f) : null;
+    const best = bestFit || dict(fits) || bestAny || dict((w) => w !== prev);
+    return best ? emit(best) : null;
   }
 
   // ---- Leading prompts (guidance tier) ------------------------------------
