@@ -247,6 +247,24 @@ await test("one letter ghosts the user's own word and Tab completes it (h → he
   assert.ok(t.startsWith("hello"), `Tab should complete to hello, got ${JSON.stringify(t)}`);
 });
 
+await test("phrase judgment: mid-word prefix ghosts the whole learned phrase, Tab accepts it", async () => {
+  await fresh();
+  await page.evaluate(async () => {
+    for (let i = 0; i < 3; i++)
+      await window.PromptComplete.learn("analyze the sales dataset and plot the monthly revenue trend by region");
+  });
+  await typeText("analyze the sa");
+  assert.ok(await ghostVisible(), "phrase ghost should appear mid-word");
+  const g = await page.locator(".pc-ghost").textContent();
+  assert.ok(g.startsWith("les dataset and plot"), `expected the whole phrase, got ${JSON.stringify(g)}`);
+  await page.keyboard.press("Tab");
+  const t = (await text()).trim();
+  assert.ok(
+    t.startsWith("analyze the sales dataset and plot"),
+    `Tab should accept the phrase, got ${JSON.stringify(t)}`
+  );
+});
+
 await test("dictionary completes an unseen prefix and suppresses the repair chip", async () => {
   await fresh();
   await typeText("underst");

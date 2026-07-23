@@ -440,7 +440,16 @@
     if (!/\s$/.test(text)) {
       await loadNgrams(); // wordsCache rides the same storage load
       const wc = wordCompletion(text);
-      if (wc) out.push(wc);
+      if (wc) {
+        // Judge the ENTIRE phrase: pretend the word is finished and ask the
+        // personal model what comes next. Every extra word must clear the
+        // same confidence gate (P ≥ 0.45, support ≥ 2), so the long ghost
+        // only appears when the phrase really is how this user writes.
+        // "analyze the sa" → "les dataset and plot the monthly revenue".
+        const phrase = await historySuggestion(text + wc + " ");
+        if (phrase) out.push(wc + " " + phrase);
+        out.push(wc); // word-only stays available via Alt+]
+      }
     }
     // Phrase tiers need at least a couple of characters of signal; a single
     // letter can still get a WORD completion above ("h" → the user's "hello").

@@ -169,6 +169,26 @@ test("personal vocabulary outranks the dictionary for the same prefix", async ()
   assert.equal(s, "utational", `user's own word must win, got ${JSON.stringify(s)}`);
 });
 
+test("phrase judgment: a completed word extends into the learned phrase", async () => {
+  store = {};
+  for (let i = 0; i < 3; i++)
+    await PC.learn("analyze the sales dataset and plot the monthly revenue trend by region");
+  const s = await PC.getSuggestion("analyze the sa", { mode: "local" });
+  assert.ok(
+    s && s.startsWith("les dataset and plot"),
+    `mid-word prefix should ghost the whole phrase, got ${JSON.stringify(s)}`
+  );
+});
+
+test("phrase judgment stays word-only when the continuation is uncertain", async () => {
+  store = {};
+  // "sales" continues two different ways 50/50 — below the 0.45 gate.
+  await PC.learn("check the sales numbers today please friend");
+  await PC.learn("check the sales figures today please friend");
+  const s = await PC.getSuggestion("check the sa", { mode: "local" });
+  assert.equal(s, "les", `uncertain phrase must fall back to the word, got ${JSON.stringify(s)}`);
+});
+
 test("no word completion after a trailing space (phrase tiers own that)", async () => {
   store = {};
   await PC.learn("hello can you help me with my report");

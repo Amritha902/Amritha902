@@ -20,6 +20,10 @@ nothing. PromptComplete turns it into an IDE for prompts:
 - **Word completion that knows *you*** — type `h` and it ghosts `ello` because
   *you* say "hello" a lot: your own vocabulary (learned on-device from prompts
   you send) is checked first, then a real frequency-ranked English lexicon.
+  And it judges the **entire phrase**: `analyze the sa` ghosts
+  `les dataset and plot the monthly revenue` when the model is confident
+  that's how you continue — every extra word must clear the same confidence
+  gate, so long ghosts appear only for phrases you really write.
 - **Prompt Health ring** — a live score of your draft against prompt-engineering
   best practices, with the missing ingredient named.
 - **Intent Compiler** — one click turns a rough draft ("fix my resume idk make it
@@ -99,8 +103,8 @@ Anthropic API key. Ghost completions default to `claude-haiku-4-5` (latency);
 the Intent Compiler defaults to `claude-sonnet-5` (quality). Your key lives in
 your browser's extension storage and is sent only to `api.anthropic.com`.
 
-Run the tests: `npm test` (24 unit tests, zero dependencies) and
-`npm run test:e2e` (26 Playwright assertions: every keyboard interaction in
+Run the tests: `npm test` (26 unit tests, zero dependencies) and
+`npm run test:e2e` (27 Playwright assertions: every keyboard interaction in
 the demo composer, all three extension pages, and a real-Chrome load of the
 unpacked extension with its MV3 service worker).
 
