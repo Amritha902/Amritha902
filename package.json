@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/model.test.mjs",
+    "test": "node tests/model.test.mjs && node tests/repair.test.mjs",
     "icons": "node tools/gen-icons.mjs",
     "test:e2e": "node tests/e2e.test.mjs && node tests/pages.test.mjs && node tests/extension.test.mjs"
   },

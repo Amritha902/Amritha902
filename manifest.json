@@ -9,8 +9,12 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "permissions": ["storage"],
-  "host_permissions": ["https://api.anthropic.com/"],
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://api.anthropic.com/"
+  ],
   "background": {
     "service_worker": "src/background.js",
     "type": "module"
@@ -27,9 +31,12 @@
         "src/suggest.js",
         "src/health.js",
         "src/palette.js",
+        "src/repair.js",
         "src/content.js"
       ],
-      "css": ["src/overlay.css"],
+      "css": [
+        "src/overlay.css"
+      ],
       "run_at": "document_idle"
     }
   ],

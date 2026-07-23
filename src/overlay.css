@@ -164,3 +164,28 @@
   overflow: hidden;
   pointer-events: none;
 }
+
+/* "Did you mean" repair chip (garble repair tier) */
+.pc-repair {
+  position: fixed;
+  z-index: 2147483647;
+  background: #fdf6ec;
+  border: 1px solid #d8a25f;
+  color: #6f5b3e;
+  border-radius: 10px;
+  padding: 6px 12px;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  box-shadow: 0 6px 18px rgba(60, 50, 40, 0.15);
+  display: none;
+  max-width: 70ch;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.pc-repair b { color: #b8613f; font-weight: 650; }
+.pc-repair kbd {
+  background: #f0e6d6;
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+}

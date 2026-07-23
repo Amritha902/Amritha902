@@ -119,6 +119,7 @@
     if (!settings.enabled) {
       hideGhost();
       hideHealth();
+      hideRepair();
     }
   });
 
@@ -243,6 +244,111 @@
     }
   }
 
+  // --- Garble repair ("did you mean") chip ---------------------------------
+  // When the trailing words look badly typed (typos, jammed words, misplaced
+  // spaces), src/repair.js proposes a cleaned version and this chip offers it.
+  // Ctrl/Cmd+. (or a click) applies; Esc or further typing dismisses.
+  let repairEl = null;
+  let pendingRepair = null; // { el, from, to, fixed } in text-node coordinates
+
+  // Text in TEXT-NODE coordinates (same mapping used to select the span —
+  // innerText offsets don't map onto text nodes; see palette.js).
+  function repairText(el) {
+    if (el.tagName === "TEXTAREA") return el.value;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let out = "";
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) out += node.nodeValue;
+    return out;
+  }
+
+  function selectTextRange(el, from, to) {
+    if (el.tagName === "TEXTAREA") {
+      el.focus();
+      el.setSelectionRange(from, to);
+      return true;
+    }
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    let pos = 0;
+    let startSet = false;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const len = node.nodeValue.length;
+      if (!startSet && pos + len >= from) {
+        range.setStart(node, from - pos);
+        startSet = true;
+      }
+      if (startSet && pos + len >= to) {
+        range.setEnd(node, to - pos);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        return true;
+      }
+      pos += len;
+    }
+    return false;
+  }
+
+  function ensureRepairChip() {
+    if (repairEl) return repairEl;
+    repairEl = document.createElement("div");
+    repairEl.className = "pc-repair";
+    repairEl.addEventListener("mousedown", (e) => {
+      e.preventDefault(); // keep composer focus
+      applyRepair();
+    });
+    document.body.appendChild(repairEl);
+    return repairEl;
+  }
+
+  function hideRepair() {
+    pendingRepair = null;
+    if (repairEl) repairEl.style.display = "none";
+  }
+
+  function maybeShowRepair(el) {
+    if (!window.PromptRepair) return;
+    const text = repairText(el);
+    const r = window.PromptRepair.repairTail(text);
+    if (!r) return hideRepair();
+    pendingRepair = { el, ...r };
+    const chip = ensureRepairChip();
+    chip.innerHTML = `✎ Did you mean: <b></b>? <kbd>Ctrl+.</kbd>`;
+    chip.querySelector("b").textContent = r.fixed;
+    const rect = caretRect(el);
+    if (!rect) return hideRepair();
+    chip.style.left = Math.max(8, Math.min(rect.left, innerWidth - 320)) + "px";
+    chip.style.top = rect.top + (rect.height || 20) + 8 + "px";
+    chip.style.display = "block";
+  }
+
+  function applyRepair() {
+    if (!pendingRepair) return false;
+    const { el, from, to, fixed } = pendingRepair;
+    hideRepair();
+    if (!selectTextRange(el, from, to)) return false;
+    suppressInputUntil = Date.now() + 80; // our own insertion, not user typing
+    if (el.tagName === "TEXTAREA") {
+      el.setRangeText(fixed, from, to, "end");
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    } else {
+      try {
+        document.execCommand("insertText", false, fixed);
+      } catch (_) {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount) {
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+          range.insertNode(document.createTextNode(fixed));
+          range.collapse(false);
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+      }
+    }
+    updateHealth(el);
+    return true;
+  }
+
   // --- Suggestion flow ----------------------------------------------------
   function paletteActive() {
     return (
@@ -271,7 +377,10 @@
     clearTimeout(debounceTimer);
     if (!settings.enabled) return;
     debounceTimer = setTimeout(async () => {
-      if (el !== activeInput || paletteActive()) return hideGhost();
+      if (el !== activeInput || paletteActive()) {
+        hideRepair();
+        return hideGhost();
+      }
       const text = readText(el);
       if (!caretAtEnd(el) || text.trim().length < 2) return hideGhost();
 
@@ -299,6 +408,9 @@
       } else {
         hideGhost();
       }
+
+      // Garble check rides the same quiet gap.
+      maybeShowRepair(el);
 
       // Stage 2: the AI call waits for a further quiet period so rapid
       // typing never sprays network requests (each would be aborted anyway).
@@ -463,7 +575,15 @@
         cycleCandidate(cycleFwd ? 1 : -1);
         return;
       }
+      // Accept the "did you mean" repair with Ctrl/Cmd+.
+      if (e.key === "." && (e.ctrlKey || e.metaKey) && pendingRepair) {
+        e.preventDefault();
+        e.stopPropagation();
+        applyRepair();
+        return;
+      }
       // Dismiss with Escape.
+      if (e.key === "Escape" && pendingRepair) hideRepair();
       if (e.key === "Escape" && currentSuggestion) {
         bumpStat("dismissed");
         hideGhost();
@@ -480,11 +600,13 @@
           recordLabEntry(text);
         }
         hideGhost();
+        hideRepair();
         return;
       }
       // Any other navigation/caret key hides the stale ghost.
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
         hideGhost();
+        hideRepair();
       }
     },
     true
@@ -744,6 +866,7 @@
   const hideOverlays = () => {
     hideGhost();
     hideHealth();
+    hideRepair();
   };
   window.addEventListener("scroll", hideOverlays, true);
   window.addEventListener("resize", hideOverlays, true);

@@ -203,6 +203,28 @@ await test("Intent Compiler replaces the draft and re-scores", async () => {
   assert.ok(score >= 60, `compiled prompt should re-score well, got ${score}`);
 });
 
+// --- Garble repair ("did you mean") ---------------------------------------
+
+await test("garbled tail shows a repair chip and Ctrl+. applies it", async () => {
+  await fresh();
+  await typeText("help me with computign");
+  await page.waitForSelector(".pc-repair", { state: "visible", timeout: 4000 });
+  const chip = await page.locator(".pc-repair").innerText();
+  assert.ok(chip.includes("computing"), `chip should propose the fix, got ${JSON.stringify(chip)}`);
+  await page.keyboard.press("Control+.");
+  await page.waitForTimeout(300);
+  const t = await text();
+  assert.ok(/help me with computing\s*$/.test(t), `repair should apply, got ${JSON.stringify(t)}`);
+});
+
+await test("clean text never shows the repair chip", async () => {
+  await fresh();
+  await typeText("write an email to my manager");
+  await page.waitForTimeout(600);
+  const visible = await page.locator(".pc-repair").isVisible().catch(() => false);
+  assert.equal(visible, false, "no chip on clean text");
+});
+
 // --- Learning-on-send ---------------------------------------------------
 
 await test("Enter (send) trains the model for the next session", async () => {

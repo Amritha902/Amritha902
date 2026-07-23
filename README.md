@@ -25,6 +25,10 @@ nothing. PromptComplete turns it into an IDE for prompts:
   chain-of-thought, output formats) with Tab-navigable `{{placeholders}}`.
 - **Prompt Lab** — every sent prompt logged locally like an ML experiment: health
   score, size, missing techniques, plus your acceptance-rate trend over time.
+- **Garble repair** — badly-typed tails ("computign", "understandingkinda") get a
+  "Did you mean" chip with the cleaned version; `Ctrl+.` applies. Norvig-style
+  spelling correction (edit-distance candidates ranked by word frequency),
+  entirely on-device.
 
 Built Claude-first with a warm Claude-flavored theme. Also works on ChatGPT.
 
@@ -66,6 +70,7 @@ Full design + formulas: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 | `Ctrl/Cmd+→` | Accept one word |
 | `Alt+]` / `Alt+[` | Cycle alternative suggestions |
 | `Esc` | Dismiss |
+| `Ctrl/Cmd+.` | Apply the "did you mean" garble repair |
 | `/` at start | Open the scaffold palette |
 | `Tab` (after scaffold) | Jump to next `{{placeholder}}` |
 
@@ -82,8 +87,8 @@ Anthropic API key. Ghost completions default to `claude-haiku-4-5` (latency);
 the Intent Compiler defaults to `claude-sonnet-5` (quality). Your key lives in
 your browser's extension storage and is sent only to `api.anthropic.com`.
 
-Run the tests: `npm test` (11 unit tests, zero dependencies) and
-`npm run test:e2e` (19 Playwright assertions: every keyboard interaction in
+Run the tests: `npm test` (18 unit tests, zero dependencies) and
+`npm run test:e2e` (21 Playwright assertions: every keyboard interaction in
 the demo composer, all three extension pages, and a real-Chrome load of the
 unpacked extension with its MV3 service worker).
 
@@ -125,6 +130,7 @@ frames → an animated GIF assembled by our own dependency-free GIF89a encoder
 | Content script | `src/content.js` | Composer detection, ghost rendering, keyboard, health ring, analytics |
 | Suggestion engine | `src/suggest.js` | KN language model + curated templates + vector-space IR |
 | Health engine | `src/health.js` | 5-dimension best-practice scoring, length-scaled |
+| Garble repair | `src/repair.js` | Norvig-style corrector: edit-distance candidates ranked by frequency |
 | Scaffolds | `src/templates.js`, `src/palette.js` | Curated prompt patterns + `/` palette + snippet mode |
 | Service worker | `src/background.js` | Streaming completions over a port (real abort), Intent Compiler |
 | Insights | `dashboard/` | Acceptance analytics, time series, Prompt Lab, export |
