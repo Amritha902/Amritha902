@@ -127,6 +127,38 @@
     return best.slice(partial.length);
   }
 
+  // ---- Leading prompts (guidance tier) ------------------------------------
+  // When the predictive tiers have nothing — an original draft the model has
+  // never seen — don't go silent: LEAD. The health engine knows which
+  // prompt-engineering ingredient the draft is missing; ghost a fragment
+  // that walks the user toward it. Accepting one re-scores the draft, so the
+  // next pause leads to the next missing ingredient — a step-by-step guide
+  // rendered as autocomplete.
+  const LEAD_FRAGMENTS = [
+    ["specificity", "— be specific: {exact ask, numbers, constraints}."],
+    ["format", "— format: {3 bullets | a table | short paragraphs}."],
+    ["context", "— context: {what this is for and who will read it}."],
+    ["role", "— act as {the right expert role} while answering."],
+  ];
+  const LEAD_MIN_WORDS = 7; // only developed drafts; short lead-ins belong to templates
+
+  function leadingSuggestion(text) {
+    if (!window.PromptHealth) return null;
+    const atBoundary = /\s$/.test(text);
+    if (!atBoundary) {
+      // Only lead after a COMPLETE word — never fight the mid-word tiers.
+      const m = text.match(/([a-zA-Z']+)$/);
+      if (!m || !window.PromptRepair || !window.PromptRepair.isKnown(m[1])) return null;
+    }
+    const { total, dims, words } = window.PromptHealth.score(text);
+    if (words < LEAD_MIN_WORDS || total >= 80) return null;
+    for (const [key, frag] of LEAD_FRAGMENTS) {
+      const d = dims.find((x) => x.key === key);
+      if (d && d.applicable && !d.ok) return (atBoundary ? "" : " ") + frag;
+    }
+    return null;
+  }
+
   // Generic last-line guard for every tier: reject a candidate whose opening
   // words repeat the tail of what the user already typed ("…to my manager" +
   // " to {recipient}…").
@@ -481,6 +513,8 @@
     if (hist) out.push(hist);
     push(templateSuggestion(text));
     push(vectorTemplateSuggestion(text));
+    // Last resort: no prediction available → lead the user forward instead.
+    if (!out.length) push(leadingSuggestion(text));
     return out;
   }
 

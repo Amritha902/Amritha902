@@ -34,6 +34,9 @@ eval(readFileSync(join(root, "src/lexicon.js"), "utf8"));
 eval(readFileSync(join(root, "src/repair.js"), "utf8"));
 // eslint-disable-next-line no-eval
 eval(readFileSync(join(root, "src/suggest.js"), "utf8"));
+// health.js powers the leading-prompts guidance tier.
+// eslint-disable-next-line no-eval
+eval(readFileSync(join(root, "src/health.js"), "utf8"));
 const PC = window.PromptComplete;
 
 const tests = [];
@@ -109,11 +112,14 @@ test("vector-space retrieval catches a paraphrased lead-in", async () => {
   assert.ok(s && /recipient|topic|concise/.test(s), `IR tier should fire, got ${JSON.stringify(s)}`);
 });
 
-test("template tiers stay silent deep into a developed prompt", async () => {
+test("template tiers stay silent deep into a developed prompt (leading tier may guide)", async () => {
   store = {};
   const long = "write an email to my boss about the deadline extension we discussed yesterday evening ";
   const s = await PC.getSuggestion(long, { mode: "local" });
-  assert.equal(s, null, `lead-in templates must not fire past the window, got ${JSON.stringify(s)}`);
+  // Templates must NOT fire this deep; the only acceptable ghost here is a
+  // leading-prompts guidance fragment (starts with an em dash).
+  assert.ok(!s || /^\s?—/.test(s), `only guidance may fire past the window, got ${JSON.stringify(s)}`);
+  if (s) assert.ok(!/recipient|topic/.test(s), `template body leaked: ${JSON.stringify(s)}`);
 });
 
 test("template never duplicates words the user already typed past the trigger", async () => {
@@ -217,6 +223,29 @@ test("no word completion after a trailing space (phrase tiers own that)", async 
   await PC.learn("hello i need a summary of this paper");
   const s = await PC.getSuggestion("h ", { mode: "local" });
   assert.notEqual(s, "ello", "boundary must not re-complete the finished word");
+});
+
+// --- Leading prompts (guidance tier) -----------------------------------------
+test("leading tier guides an original draft the predictors have never seen", async () => {
+  store = {};
+  const s = await PC.getSuggestion("the team met today and we discussed many things", { mode: "local" });
+  assert.ok(s && /^ —/.test(s), `expected a guidance fragment, got ${JSON.stringify(s)}`);
+  assert.ok(/specific/.test(s), `first missing ingredient is specificity, got ${JSON.stringify(s)}`);
+});
+
+test("leading tier stays silent on short drafts (templates own lead-ins)", async () => {
+  store = {};
+  const s = await PC.getSuggestion("the report was about the market", { mode: "local" });
+  assert.equal(s, null, `6-word draft must not trigger guidance, got ${JSON.stringify(s)}`);
+});
+
+test("leading tier stays silent once the draft scores well", async () => {
+  store = {};
+  const good =
+    "You are a career coach. Rewrite my resume summary for a data science internship. " +
+    "Context: third-year student, two ML projects. Return three bullets under 20 words each. ";
+  const s = await PC.getSuggestion(good, { mode: "local" });
+  assert.ok(!s || !/^\s?—/.test(s), `well-scored draft needs no guidance, got ${JSON.stringify(s)}`);
 });
 
 // --- Runner -----------------------------------------------------------------

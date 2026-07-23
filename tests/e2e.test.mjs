@@ -275,6 +275,22 @@ await test("dictionary completes an unseen prefix and suppresses the repair chip
   assert.equal(chipVisible, false, "repair chip must yield to an active ghost");
 });
 
+// --- Leading prompts (guidance tier) ---------------------------------------
+
+await test("leading prompts: an original draft gets a guidance ghost that Tab-accepts", async () => {
+  await fresh();
+  await typeText("the team met today and we discussed many things");
+  await page.waitForFunction(() => {
+    const g = document.querySelector(".pc-ghost");
+    return g && getComputedStyle(g).display !== "none" && /—/.test(g.textContent);
+  }, { timeout: 4000 });
+  const g = await page.locator(".pc-ghost").textContent();
+  assert.ok(/specific/.test(g), `guidance should name the missing ingredient, got ${JSON.stringify(g)}`);
+  await page.keyboard.press("Tab");
+  const t = await text();
+  assert.ok(/be specific/.test(t), `Tab should accept the guidance, got ${JSON.stringify(t)}`);
+});
+
 // --- Garble repair ("did you mean") ---------------------------------------
 
 await test("garbled tail shows a repair chip and Ctrl+. applies it", async () => {
