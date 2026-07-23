@@ -41,6 +41,16 @@
     { when: /^act as\b/i, keys: "act role expert", add: " an expert in the field and answer accordingly." },
     { when: /^what (is|are)\b/i, keys: "what meaning", add: " — and why does it matter in practice?" },
     { when: /^how (do|can) i\b/i, keys: "how do example", add: " — give me a concrete example." },
+    { when: /^i want to\b/i, keys: "want goal plan", add: " {goal} — give me a concrete plan to get there." },
+    { when: /^i need\b/i, keys: "need help", add: " help with {topic} — start with the three most important things to know." },
+    { when: /^tell me\b/i, keys: "tell about", add: " about {topic} — the essentials first, details after." },
+    { when: /^create\b/i, keys: "create make build", add: " a {thing} with a clear structure and one worked example." },
+    { when: /^draft\b/i, keys: "draft first version", add: " a first version I can edit — short and structured." },
+    { when: /^improve\b/i, keys: "improve better polish", add: " the following text for clarity and flow, keeping my voice." },
+    { when: /^check\b/i, keys: "check verify errors", add: " the following for errors and suggest fixes." },
+    { when: /^suggest\b/i, keys: "suggest options ideas", add: " a few options with pros and cons for each." },
+    { when: /^plan\b/i, keys: "plan steps milestones", add: " this out step by step with milestones." },
+    { when: /^make\b/i, keys: "make clearer concise", add: " this clearer and more concise without losing meaning." },
   ];
 
   // Templates complete a LEAD-IN, so both tiers only fire early in

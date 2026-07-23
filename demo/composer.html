@@ -88,6 +88,12 @@
       </div>
     </div>
     <div class="badge">PromptComplete demo composer (not affiliated with any AI provider)</div>
+    <div class="no-suggestion-hint" id="nsh" hidden
+      style="margin-top:14px;color:#a9a498;font-size:13px;text-align:center;">
+      No suggestion for this lead-in — the local engine only completes phrases it
+      knows or has learned from you. Try a starter below, or press Enter to teach
+      it this phrase.
+    </div>
     <script src="harness.js"></script>
     <script src="../src/templates.js"></script>
     <script src="../src/suggest.js"></script>
@@ -95,5 +101,26 @@
     <script src="../src/palette.js"></script>
     <script src="../src/repair.js"></script>
     <script src="../src/content.js"></script>
+    <script>
+      // Demo-only: if the user types and gets no ghost/repair for a moment,
+      // explain WHY instead of looking broken.
+      (function () {
+        const input = document.querySelector(".input");
+        const hint = document.getElementById("nsh");
+        let t = null;
+        input.addEventListener("input", () => {
+          clearTimeout(t);
+          hint.hidden = true;
+          const words = (input.innerText.match(/\S+/g) || []).length;
+          if (words < 2) return;
+          t = setTimeout(() => {
+            const ghost = document.querySelector(".pc-ghost");
+            const chip = document.querySelector(".pc-repair");
+            const showing = (el) => el && getComputedStyle(el).display !== "none";
+            if (!showing(ghost) && !showing(chip)) hint.hidden = false;
+          }, 1100);
+        });
+      })();
+    </script>
   </body>
 </html>

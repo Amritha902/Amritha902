@@ -206,7 +206,12 @@
     if (ghostEl) return ghostEl;
     ghostEl = document.createElement("span");
     ghostEl.className = "pc-ghost";
-    ghostEl.setAttribute("aria-hidden", "true");
+    ghostEl.title = "Tap or press Tab to accept";
+    // Tap/click accepts — on touch keyboards there is no Tab key at all.
+    ghostEl.addEventListener("mousedown", (e) => {
+      e.preventDefault(); // keep composer focus
+      if (activeInput && currentSuggestion) acceptSuggestion(activeInput);
+    });
     document.body.appendChild(ghostEl);
     return ghostEl;
   }

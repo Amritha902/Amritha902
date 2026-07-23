@@ -3,7 +3,10 @@
 .pc-ghost {
   position: fixed;
   z-index: 2147483647;
-  pointer-events: none;
+  /* clickable: tap/click accepts — the only accept path on touch keyboards,
+     which have no Tab key */
+  pointer-events: auto;
+  cursor: pointer;
   white-space: pre-wrap;
   color: rgba(130, 130, 140, 0.72);
   opacity: 0.85;

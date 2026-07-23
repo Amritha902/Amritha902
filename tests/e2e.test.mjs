@@ -203,6 +203,33 @@ await test("Intent Compiler replaces the draft and re-scores", async () => {
   assert.ok(score >= 60, `compiled prompt should re-score well, got ${score}`);
 });
 
+await test("clicking the ghost accepts (touch devices have no Tab key)", async () => {
+  await fresh();
+  await typeText("write an email");
+  assert.ok(await ghostVisible());
+  await page.locator(".pc-ghost").click();
+  const t = await text();
+  assert.ok(t.includes("{recipient}"), `click-accept failed: ${JSON.stringify(t)}`);
+});
+
+await test("everyday lead-ins get suggestions (tell me / i need)", async () => {
+  await fresh();
+  await typeText("tell me");
+  assert.ok(await ghostVisible(), "'tell me' should suggest");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Control+a");
+  await page.keyboard.press("Delete");
+  await typeText("i need");
+  assert.ok(await ghostVisible(), "'i need' should suggest");
+});
+
+await test("demo shows the why-no-suggestion hint on unknown lead-ins", async () => {
+  await fresh();
+  // All dictionary words (so no repair chip), but no known lead-in either.
+  await typeText("the report was about the market");
+  await page.waitForSelector("#nsh:not([hidden])", { timeout: 4000 });
+});
+
 // --- Garble repair ("did you mean") ---------------------------------------
 
 await test("garbled tail shows a repair chip and Ctrl+. applies it", async () => {
