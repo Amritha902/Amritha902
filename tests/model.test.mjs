@@ -132,6 +132,14 @@ test("data-driven trigger: 'i want you to' completes toward act-as (10.7% of rea
   assert.ok(s && /act as/.test(s), `corpus-validated lead-in should fire, got ${JSON.stringify(s)}`);
 });
 
+test("everyday opener completes with or without the apostrophe (whats the plan)", async () => {
+  store = {};
+  const a = await PC.getSuggestion("whats the plan", { mode: "local" });
+  const b = await PC.getSuggestion("what's the plan", { mode: "local" });
+  assert.ok(a && a.includes("for today"), `"whats the plan" should complete, got ${JSON.stringify(a)}`);
+  assert.ok(b && b.includes("for today"), `"what's the plan" should complete, got ${JSON.stringify(b)}`);
+});
+
 test("template still fires when the typed text is exactly the trigger", async () => {
   store = {};
   const s = await PC.getSuggestion("write an email", { mode: "local" });
@@ -187,6 +195,20 @@ test("phrase judgment stays word-only when the continuation is uncertain", async
   await PC.learn("check the sales figures today please friend");
   const s = await PC.getSuggestion("check the sa", { mode: "local" });
   assert.equal(s, "les", `uncertain phrase must fall back to the word, got ${JSON.stringify(s)}`);
+});
+
+test("context breaks unigram ties: 'whats the pl' picks plan over equally-frequent plot", async () => {
+  store = {};
+  // "plot" and "plan" both used 3× — raw counts tie; context must decide.
+  for (let i = 0; i < 3; i++)
+    await PC.learn("analyze the sales dataset and plot the monthly revenue trend by region");
+  for (let i = 0; i < 3; i++)
+    await PC.learn("whats the plan for today and what should i focus on first");
+  const s = await PC.getSuggestion("whats the pl", { mode: "local" });
+  assert.ok(
+    s && s.startsWith("an for today"),
+    `context should pick "plan" and extend the phrase, got ${JSON.stringify(s)}`
+  );
 });
 
 test("no word completion after a trailing space (phrase tiers own that)", async () => {

@@ -39,6 +39,9 @@
     { when: /^brainstorm\b/i, keys: "brainstorm ideas approaches", add: " a range of distinct approaches, including unconventional ones." },
     { when: /^turn\b/i, keys: "turn notes convert", add: " the following notes into a polished draft." },
     { when: /^act as\b/i, keys: "act role expert", add: " an expert in the field and answer accordingly." },
+    // Everyday conversational openers (with and without the apostrophe).
+    { when: /^what'?s the plan\b/i, keys: "plan today priorities schedule", add: " for today — give me a prioritized checklist." },
+    { when: /^what should i\b/i, keys: "should decide next", add: " focus on first, and why?" },
     { when: /^what (is|are)\b/i, keys: "what meaning", add: " — and why does it matter in practice?" },
     { when: /^how (do|can) i\b/i, keys: "how do example", add: " — give me a concrete example." },
     // Data-driven: "i want you …" opens 10.7% of the awesome-chatgpt-prompts
@@ -89,6 +92,18 @@
     const m = text.match(/([a-zA-Z']+)$/);
     if (!m) return null;
     const partial = m[1].toLowerCase();
+
+    // Context first: given the words BEFORE the partial, does the n-gram
+    // model already know what comes next here? "whats the pl" → the model
+    // has seen "whats the plan", so "plan" beats the globally-more-frequent
+    // "plot". Gated on the conditional probability among prefix matches.
+    const ctx = stemAll(normalize(text.slice(0, m.index)));
+    if (ctx.length >= 2 && ngramCache) {
+      const pred = predictNext(ngramCache, ctx, partial);
+      if (pred && pred.support >= SUPPORT_MIN && pred.pCond >= CONFIDENCE_MIN) {
+        return pred.w.slice(partial.length);
+      }
+    }
 
     // The user's own words first: any prefix length, needs 2+ uses. A
     // candidate must also beat the typed word's OWN count — if the user has
@@ -361,7 +376,11 @@
    * both orders are unseen. O(k) in the candidate count — the continuation
    * distribution was precomputed incrementally at index time.
    */
-  function predictNext(grams, context) {
+  // `prefix` (optional) restricts candidates to words extending a typed
+  // partial; `pCond` is then the probability renormalized over that set —
+  // the right gate for mid-word completion, where the typed letters have
+  // already filtered the candidate space.
+  function predictNext(grams, context, prefix) {
     const d3 = context.length >= 3 ? mle(grams, context.slice(-3).join(" ")) : null;
     const d2 = context.length >= 2 ? mle(grams, context.slice(-2).join(" ")) : null;
     if (!d3 && !d2) return null;
@@ -388,11 +407,15 @@
     ]);
 
     let best = null;
+    let pSum = 0;
     for (const w of candidates) {
+      if (prefix && (!w.startsWith(prefix) || w.length <= prefix.length)) continue;
       const p = p3(w);
+      pSum += p;
       const support = Math.max(d3 ? d3.counts[w] || 0 : 0, d2 ? d2.counts[w] || 0 : 0);
       if (!best || p > best.p) best = { w, p, support };
     }
+    if (best && prefix) best.pCond = pSum > 0 ? best.p / pSum : 0;
     return best;
   }
 
