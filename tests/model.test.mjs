@@ -126,6 +126,12 @@ test("template never duplicates words the user already typed past the trigger", 
   }
 });
 
+test("data-driven trigger: 'i want you to' completes toward act-as (10.7% of real corpus)", async () => {
+  store = {};
+  const s = await PC.getSuggestion("i want you to", { mode: "local" });
+  assert.ok(s && /act as/.test(s), `corpus-validated lead-in should fire, got ${JSON.stringify(s)}`);
+});
+
 test("template still fires when the typed text is exactly the trigger", async () => {
   store = {};
   const s = await PC.getSuggestion("write an email", { mode: "local" });

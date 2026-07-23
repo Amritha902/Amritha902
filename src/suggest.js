@@ -41,6 +41,10 @@
     { when: /^act as\b/i, keys: "act role expert", add: " an expert in the field and answer accordingly." },
     { when: /^what (is|are)\b/i, keys: "what meaning", add: " — and why does it matter in practice?" },
     { when: /^how (do|can) i\b/i, keys: "how do example", add: " — give me a concrete example." },
+    // Data-driven: "i want you …" opens 10.7% of the awesome-chatgpt-prompts
+    // corpus (see tools/analyze-prompts.mjs) — the single most common personal
+    // lead-in after "act as".
+    { when: /^i want you to\b/i, keys: "want you act role", add: " act as {role} — {first_task}." },
     { when: /^i want to\b/i, keys: "want goal plan", add: " {goal} — give me a concrete plan to get there." },
     { when: /^i need\b/i, keys: "need help", add: " help with {topic} — start with the three most important things to know." },
     { when: /^tell me\b/i, keys: "tell about", add: " about {topic} — the essentials first, details after." },

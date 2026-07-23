@@ -60,7 +60,9 @@ This is a working applied-ML system, not a snippet list:
   frequency list, itself derived from Google's Web Trillion Word Corpus
   (Brants & Franz, LDC2006T13). `node tools/build-lexicon.mjs` re-downloads
   the dataset and rebuilds the file — provenance in the generated header, no
-  hand-invented frequencies.
+  hand-invented frequencies. Template lead-ins are validated the same way,
+  against the CC0 [awesome-chatgpt-prompts](https://github.com/f/awesome-chatgpt-prompts)
+  corpus (`tools/analyze-prompts.mjs`). Full provenance: [`docs/DATA.md`](docs/DATA.md).
 
 Full design + formulas: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -97,7 +99,7 @@ Anthropic API key. Ghost completions default to `claude-haiku-4-5` (latency);
 the Intent Compiler defaults to `claude-sonnet-5` (quality). Your key lives in
 your browser's extension storage and is sent only to `api.anthropic.com`.
 
-Run the tests: `npm test` (23 unit tests, zero dependencies) and
+Run the tests: `npm test` (24 unit tests, zero dependencies) and
 `npm run test:e2e` (26 Playwright assertions: every keyboard interaction in
 the demo composer, all three extension pages, and a real-Chrome load of the
 unpacked extension with its MV3 service worker).
