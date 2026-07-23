@@ -66,6 +66,13 @@ This is a working applied-ML system, not a snippet list:
   support ≥ 2: silence beats a wrong guess (precision over recall, by design).
 - **A built-in eval loop** — acceptance rate (the canonical autocomplete metric),
   daily time-series trend, descriptive statistics, and one-click dataset export.
+- **Real data structures, really measured** — prefix completion runs on a
+  weighted top-K trie (**255× faster** than a linear scan, p50 0.72µs, zero
+  correctness mismatches), spell repair on a Damerau–Levenshtein **BK-tree**
+  (6.2× faster than Norvig candidate generation at equal accuracy, p95
+  50.7ms → 5.0ms), and phrase prediction on **width-3 beam search** gated by
+  joint probability. Every number reproduces via `npm run bench` on real
+  corpus data — see [`docs/ALGORITHMS.md`](docs/ALGORITHMS.md).
 - **A real data source, reproducibly** — the spelling/word-completion lexicon
   (`src/lexicon.js`, ~10k words) is generated from the
   [google-10000-english](https://github.com/first20hours/google-10000-english)
@@ -111,10 +118,12 @@ Anthropic API key. Ghost completions default to `claude-haiku-4-5` (latency);
 the Intent Compiler defaults to `claude-sonnet-5` (quality). Your key lives in
 your browser's extension storage and is sent only to `api.anthropic.com`.
 
-Run the tests: `npm test` (40 unit tests, zero dependencies) and
+Run the tests: `npm test` (61 unit tests, zero dependencies) and
 `npm run test:e2e` (30 Playwright assertions: every keyboard interaction in
 the demo composer, all three extension pages, and a real-Chrome load of the
-unpacked extension with its MV3 service worker).
+unpacked extension with its MV3 service worker). `npm run bench` reproduces
+every performance and accuracy number in
+[`docs/ALGORITHMS.md`](docs/ALGORITHMS.md) — deterministic, on real data.
 
 ## Live demo (no install)
 
@@ -154,7 +163,8 @@ frames → an animated GIF assembled by our own dependency-free GIF89a encoder
 | Content script | `src/content.js` | Composer detection, ghost rendering, keyboard, health ring, analytics |
 | Suggestion engine | `src/suggest.js` | KN language model + curated templates + vector-space IR |
 | Health engine | `src/health.js` | 5-dimension best-practice scoring, length-scaled |
-| Garble repair | `src/repair.js` | Norvig-style corrector: edit-distance candidates ranked by frequency |
+| Garble repair | `src/repair.js` | Damerau–Levenshtein BK-tree query (Norvig generation as fallback) |
+| Index structures | `src/trie.js`, `src/bktree.js` | Weighted top-K trie (O(prefix) completion) + metric tree (pruned edit-distance search) |
 | Lexicon (generated) | `src/lexicon.js` | ~10k words from the google-10000-english dataset; rebuild via `tools/build-lexicon.mjs` |
 | Scaffolds | `src/templates.js`, `src/palette.js` | Curated prompt patterns + `/` palette + snippet mode |
 | Service worker | `src/background.js` | Streaming completions over a port (real abort), Intent Compiler |

@@ -28,6 +28,8 @@
       ],
       "js": [
         "src/lexicon.js",
+        "src/trie.js",
+        "src/bktree.js",
         "src/templates.js",
         "src/suggest.js",
         "src/health.js",

@@ -56,6 +56,21 @@
     if (!RANK.has(w)) RANK.set(w, i);
   });
 
+  // Index structures (src/trie.js, src/bktree.js), built lazily on first use
+  // so page load stays light (~25ms trie, ~75ms BK-tree — measured in
+  // bench/bench.mjs). Both are optional: every caller keeps a linear-scan /
+  // edits-based fallback so isolated harnesses still work without them.
+  let TRIE = null;
+  function getTrie() {
+    if (!TRIE && window.PromptTrie) TRIE = window.PromptTrie.create(WORDS);
+    return TRIE;
+  }
+  let BK = null;
+  function getBK() {
+    if (!BK && window.PromptBK) BK = window.PromptBK.create(WORDS);
+    return BK;
+  }
+
   const LETTERS = "abcdefghijklmnopqrstuvwxyz";
 
   const isKnown = (w) => RANK.has(w.toLowerCase());
@@ -94,17 +109,27 @@
     }
 
     // Edit distance 1, then 2 (only for longer words — short words at
-    // distance 2 are mostly noise).
+    // distance 2 are mostly noise). Hot path: BK-tree metric query with
+    // triangle-inequality pruning (6.4x faster than generating edit
+    // candidates, equal accuracy — bench/bench.mjs). Fallback: Norvig-style
+    // candidate generation when the tree module isn't loaded.
     let bestEdit = null;
-    const consider = (cand) => {
-      if (isKnown(cand) && (!bestEdit || score(cand) < bestEdit.s)) {
-        bestEdit = { fix: cand, s: score(cand) };
+    const bk = getBK();
+    if (bk) {
+      let res = bk.query(w, 1);
+      if (!res.length && w.length > 5) res = bk.query(w, 2);
+      if (res.length) bestEdit = { fix: res[0].w, s: res[0].rank };
+    } else {
+      const consider = (cand) => {
+        if (isKnown(cand) && (!bestEdit || score(cand) < bestEdit.s)) {
+          bestEdit = { fix: cand, s: score(cand) };
+        }
+      };
+      const e1 = edits1(w);
+      for (const c of e1) consider(c);
+      if (!bestEdit && w.length > 5) {
+        for (const c of e1) for (const c2 of edits1(c)) consider(c2);
       }
-    };
-    const e1 = edits1(w);
-    for (const c of e1) consider(c);
-    if (!bestEdit && w.length > 5) {
-      for (const c of e1) for (const c2 of edits1(c)) consider(c2);
     }
 
     if (bestSplit && (!bestEdit || bestSplit.s <= bestEdit.s)) return bestSplit.fix;
@@ -166,18 +191,24 @@
     const p = prefix.toLowerCase();
     if (p.length < 2) return null;
     let best = null;
-    let bestRank = Infinity;
-    for (const [w, rank] of RANK) {
-      if (w.length >= p.length + minExtra && w.startsWith(p) && rank < bestRank) {
-        if (filter && !filter(w)) continue;
-        best = w;
-        bestRank = rank;
+    const trie = getTrie();
+    if (trie) {
+      // O(|prefix|) walk + top-K peek (259x the linear scan — bench/bench.mjs).
+      best = trie.best(p, { minExtra, filter });
+    } else {
+      let bestRank = Infinity;
+      for (const [w, rank] of RANK) {
+        if (w.length >= p.length + minExtra && w.startsWith(p) && rank < bestRank) {
+          if (filter && !filter(w)) continue;
+          best = w;
+          bestRank = rank;
+        }
       }
     }
     // The prefix may already BE the finished word ("explain" → don't ghost
     // "ed"). Only extend when the longer word is more frequent than what the
     // user has typed.
-    if (best && RANK.has(p) && RANK.get(p) < bestRank) return null;
+    if (best && RANK.has(p) && RANK.get(p) < RANK.get(best)) return null;
     return best;
   }
 

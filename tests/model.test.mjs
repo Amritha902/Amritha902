@@ -26,12 +26,13 @@ globalThis.chrome = {
   },
   runtime: { sendMessage: (_m, cb) => cb && cb(null), lastError: null },
 };
-// Load order mirrors the manifest: lexicon.js (real-corpus word ranks) →
-// repair.js (exports window.PromptLexicon) → suggest.js (word completion).
-// eslint-disable-next-line no-eval
-eval(readFileSync(join(root, "src/lexicon.js"), "utf8"));
-// eslint-disable-next-line no-eval
-eval(readFileSync(join(root, "src/repair.js"), "utf8"));
+// Load order mirrors the manifest: lexicon (real-corpus word ranks) → trie +
+// BK-tree (index structures) → repair (exports window.PromptLexicon) →
+// suggest (word completion) → health (leading prompts).
+for (const f of ["src/lexicon.js", "src/trie.js", "src/bktree.js", "src/repair.js"]) {
+  // eslint-disable-next-line no-eval
+  eval(readFileSync(join(root, f), "utf8"));
+}
 // eslint-disable-next-line no-eval
 eval(readFileSync(join(root, "src/suggest.js"), "utf8"));
 // health.js powers the leading-prompts guidance tier.
