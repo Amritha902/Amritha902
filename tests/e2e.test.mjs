@@ -275,6 +275,19 @@ await test("dictionary completes an unseen prefix and suppresses the repair chip
   assert.equal(chipVisible, false, "repair chip must yield to an active ghost");
 });
 
+await test("grammar guard: 'i want to creat' Tab-completes to create (never created)", async () => {
+  await fresh();
+  await typeText("i want to creat");
+  await page.waitForFunction(() => {
+    const g = document.querySelector(".pc-ghost");
+    return g && getComputedStyle(g).display !== "none" && g.textContent.startsWith("e");
+  }, { timeout: 4000 });
+  await page.keyboard.press("Tab");
+  const t = (await text()).trim();
+  assert.ok(/^i want to create\b/.test(t), `expected "create", got ${JSON.stringify(t)}`);
+  assert.ok(!/created/.test(t), `inflected completion leaked: ${JSON.stringify(t)}`);
+});
+
 // --- Leading prompts (guidance tier) ---------------------------------------
 
 await test("leading prompts: an original draft gets a guidance ghost that Tab-accepts", async () => {

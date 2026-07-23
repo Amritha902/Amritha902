@@ -105,23 +105,46 @@
       }
     }
 
+    // Grammar guard: after the infinitive/preposition "to", an inflected
+    // completion is usually wrong — "i want to creat" must become "create",
+    // never "created". Prefer base forms there (fall back if none exists).
+    const prevWord = (text.slice(0, m.index).match(/([a-zA-Z']+)\s+$/) || [])[1];
+    const preferBase = prevWord && prevWord.toLowerCase() === "to";
+    const isBase = (w) => !/(?:ed|ing)$/.test(w) && !(/s$/.test(w) && !/ss$/.test(w));
+
     // The user's own words first: any prefix length, needs 2+ uses. A
     // candidate must also beat the typed word's OWN count — if the user has
     // already finished one of their frequent words, stay silent.
     const ownCount = (wordsCache && wordsCache[partial]) || 0;
     let best = null;
     let bestCount = ownCount;
+    let bestBase = null;
+    let bestBaseCount = ownCount;
     if (wordsCache) {
       for (const [w, c] of Object.entries(wordsCache)) {
-        if (c >= 2 && c > bestCount && w.length > partial.length && w.startsWith(partial)) {
-          best = w;
-          bestCount = c;
+        if (c >= 2 && w.length > partial.length && w.startsWith(partial)) {
+          if (c > bestCount) {
+            best = w;
+            bestCount = c;
+          }
+          if (isBase(w) && c > bestBaseCount) {
+            bestBase = w;
+            bestBaseCount = c;
+          }
         }
       }
     }
-    // Dictionary fallback: 2+ typed chars, completion must add 2+ chars.
+    if (preferBase) {
+      // Base form wins wherever one exists: own vocabulary first, then the
+      // dictionary — only then fall back to an inflected match.
+      best =
+        bestBase ||
+        (window.PromptLexicon && window.PromptLexicon.bestForPrefix(partial, 1, isBase)) ||
+        best;
+    }
+    // Dictionary fallback: 2+ typed chars, any real extension (even +1 char).
     if (!best && window.PromptLexicon) {
-      best = window.PromptLexicon.bestForPrefix(partial, 2);
+      best = window.PromptLexicon.bestForPrefix(partial, 1);
     }
     if (!best) return null;
     return best.slice(partial.length);

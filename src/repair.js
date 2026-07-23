@@ -157,16 +157,19 @@
 
   /**
    * Best dictionary completion for a typed prefix (frequency-ranked), or
-   * null. `minExtra` guards against pointless one-letter completions.
-   * Powers the word-completion ghost in suggest.js.
+   * null. A one-letter extension is a VALID completion — "creat" → "create";
+   * demanding more would skip the right word and land on a wrong inflection
+   * ("created"). `filter` (optional) lets the caller impose grammatical
+   * constraints on candidates. Powers the word-completion ghost in suggest.js.
    */
-  function bestForPrefix(prefix, minExtra = 2) {
+  function bestForPrefix(prefix, minExtra = 1, filter = null) {
     const p = prefix.toLowerCase();
     if (p.length < 2) return null;
     let best = null;
     let bestRank = Infinity;
     for (const [w, rank] of RANK) {
       if (w.length >= p.length + minExtra && w.startsWith(p) && rank < bestRank) {
+        if (filter && !filter(w)) continue;
         best = w;
         bestRank = rank;
       }

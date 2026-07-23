@@ -225,6 +225,27 @@ test("no word completion after a trailing space (phrase tiers own that)", async 
   assert.notEqual(s, "ello", "boundary must not re-complete the finished word");
 });
 
+test("grammar guard: 'i want to creat' completes to create, never created", async () => {
+  store = {};
+  const s = await PC.getSuggestion("i want to creat", { mode: "local" });
+  assert.equal(s, "e", `after "to" the base form must win, got ${JSON.stringify(s)}`);
+});
+
+test("grammar guard applies to the user's own vocabulary too", async () => {
+  store = {};
+  // The user's history is full of "created" — but after "to" it's still wrong.
+  await PC.learn("yesterday we created the dashboard and created the report");
+  await PC.learn("we created the pipeline and created the charts");
+  const s = await PC.getSuggestion("help me to creat", { mode: "local" });
+  assert.equal(s, "e", `inflected personal word must yield to the base form, got ${JSON.stringify(s)}`);
+});
+
+test("one-letter dictionary extension is a valid completion (creat → create)", async () => {
+  store = {};
+  const s = await PC.getSuggestion("we shall creat", { mode: "local" });
+  assert.ok(s && s.startsWith("e"), `+1-char completion must not be skipped, got ${JSON.stringify(s)}`);
+});
+
 // --- Leading prompts (guidance tier) -----------------------------------------
 test("leading tier guides an original draft the predictors have never seen", async () => {
   store = {};
