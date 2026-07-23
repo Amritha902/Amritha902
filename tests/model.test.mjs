@@ -89,6 +89,25 @@ test("trigram evidence outweighs bigram evidence (interpolation order)", async (
   assert.ok(s && s.includes("carefully"), `trigram should win, got ${JSON.stringify(s)}`);
 });
 
+test("beam search survives a mid-phrase split that stops greedy decoding", async () => {
+  store = {};
+  // Step 2 splits three ways (0.4 / 0.4 / 0.2 — all below the 0.45 entry
+  // gate), but every path re-converges on "for errors today". Greedy stops
+  // after "deploy"; the beam must carry through the split on joint
+  // probability and emit a long phrase.
+  await PC.learn("check the deploy logs for errors today okay");
+  await PC.learn("check the deploy logs for errors today okay");
+  await PC.learn("check the deploy status for errors today okay");
+  await PC.learn("check the deploy status for errors today okay");
+  await PC.learn("check the deploy config for errors today okay");
+  const s = await PC.getSuggestion("check the ", { mode: "local" });
+  assert.ok(s && s.startsWith("deploy "), `entry word must be deploy, got ${JSON.stringify(s)}`);
+  assert.ok(
+    s.split(" ").length >= 4,
+    `beam should push past the split (greedy stops at 1 word), got ${JSON.stringify(s)}`
+  );
+});
+
 // --- Stemming (evidence pooling) --------------------------------------------
 test("stemmed history keys pool evidence across inflections", async () => {
   store = {};
@@ -278,6 +297,14 @@ test("agreement: never completes into a repetition of the previous word", async 
   assert.notEqual(s, "e", `"the the" must be impossible, got ${JSON.stringify(s)}`);
 });
 
+test("complete common word stays silent: 'to' never becomes 'today'", async () => {
+  store = {};
+  for (let i = 0; i < 3; i++)
+    await PC.learn("whats the plan for today and what should i focus on first");
+  const s = await PC.getSuggestion("i want you to", { mode: "local" });
+  assert.ok(!s || !s.startsWith("day"), `"to" is finished — no "day" ghost, got ${JSON.stringify(s)}`);
+});
+
 test("all-caps typing continues in all-caps (CREAT → E)", async () => {
   store = {};
   const s = await PC.getSuggestion("I WANT TO CREAT", { mode: "local" });
@@ -311,6 +338,10 @@ test("leading tier stays silent once the draft scores well", async () => {
 let failed = 0;
 for (const { name, fn } of tests) {
   try {
+    // Full isolation: clear the fake storage AND the engine's in-memory
+    // caches — otherwise learned words leak between tests.
+    store = {};
+    PC.reset();
     await fn();
     console.log(`  ✓ ${name}`);
   } catch (err) {

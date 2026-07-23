@@ -182,5 +182,11 @@
   }
 
   window.PromptRepair = { repairTail, isKnown };
-  window.PromptLexicon = { bestForPrefix };
+  // rank: lower = more frequent; Infinity for out-of-lexicon words. Lets the
+  // suggestion engine apply the complete-word guard to PERSONAL candidates
+  // too ("to" must not become "today" just because you say "today" a lot).
+  window.PromptLexicon = {
+    bestForPrefix,
+    rank: (w) => (RANK.has(w.toLowerCase()) ? RANK.get(w.toLowerCase()) : Infinity),
+  };
 })();

@@ -163,8 +163,19 @@
     let bestAnyCount = ownCount;
     let bestFit = null;
     let bestFitCount = ownCount;
+    // Complete-word guard for the personal tier, mirroring the dictionary's:
+    // if the typed partial is itself a MORE COMMON word than a candidate
+    // extension, the user has probably finished typing — stay silent rather
+    // than turn "to" into "today". The web corpus contains junk "words"
+    // ("h" ranks 318, "comp" 6286), so only a clearly-established common
+    // word (top 1500, or the real one-letter words a/i) counts as complete.
+    const lexRank = window.PromptLexicon ? window.PromptLexicon.rank : () => Infinity;
+    const partialRank = lexRank(partial);
+    const looksComplete =
+      partial.length >= 2 ? partialRank < 1500 : partial === "a" || partial === "i";
     if (wordsCache) {
       for (const [w, c] of Object.entries(wordsCache)) {
+        if (looksComplete && partialRank < lexRank(w)) continue;
         if (c >= 2 && w.length > partial.length && w.startsWith(partial) && w !== prev) {
           if (c > bestAnyCount) {
             bestAny = w;
@@ -499,37 +510,105 @@
 
     let best = null;
     let pSum = 0;
+    const scored = [];
     for (const w of candidates) {
       if (prefix && (!w.startsWith(prefix) || w.length <= prefix.length)) continue;
       const p = p3(w);
       pSum += p;
       const support = Math.max(d3 ? d3.counts[w] || 0 : 0, d2 ? d2.counts[w] || 0 : 0);
+      scored.push({ w, p, support });
       if (!best || p > best.p) best = { w, p, support };
     }
     if (best && prefix) best.pCond = pSum > 0 ? best.p / pSum : 0;
+    best && (best.all = scored);
     return best;
   }
 
+  /** Top-k continuations of `context`, sorted by probability (beam search). */
+  function topNext(grams, context, k) {
+    const pred = predictNext(grams, context);
+    if (!pred) return [];
+    return pred.all.sort((a, b) => b.p - a.p).slice(0, k);
+  }
+
   /**
-   * Greedy rollout: extend the context word by word while the model stays
-   * confident. Silence beats a wrong guess — every bad ghost costs trust.
+   * BEAM-SEARCH rollout (width 3): extend the context while the model stays
+   * confident. Greedy decoding commits to the locally-best word and stops
+   * the moment one step is uncertain — even when the phrase as a whole is a
+   * near-certainty ("deploy [logs|status] for errors today": step 2 splits,
+   * but every path re-converges immediately). Beam search explores the top
+   * alternatives and gates on the JOINT probability instead:
+   *
+   *   entry:  the FIRST word must clear the strict gate (P ≥ 0.45, n ≥ 2) —
+   *           a wrong opening word invalidates everything after it
+   *   expand: later words may explore at P ≥ 0.25 (n ≥ 2), width 3
+   *   emit:   a path is emitted only if its geometric-mean P ≥ 0.45 —
+   *           longest qualifying path wins, log-prob breaks ties
+   *
    * The lookup context is STEMMED (matching the index keys); emitted words
    * keep their surface form and are re-stemmed as they join the context.
    */
+  const BEAM_WIDTH = 3;
+  const BEAM_STEP_MIN = 0.25; // exploration floor after the strict entry gate
+
   async function historySuggestion(text) {
     if (/\s$/.test(text) === false) return null; // only extend at a word boundary
     const grams = await loadNgrams();
-    let context = stemAll(normalize(text));
+    const context = stemAll(normalize(text));
     if (context.length < 2) return null;
 
-    const out = [];
-    for (let step = 0; step < MAX_EMIT; step++) {
-      const pred = predictNext(grams, context);
-      if (!pred || pred.p < CONFIDENCE_MIN || pred.support < SUPPORT_MIN) break;
-      out.push(pred.w);
-      context = context.concat(stem(pred.w));
+    // Entry gate — identical to the old greedy first step.
+    const entry = topNext(grams, context, BEAM_WIDTH).filter(
+      (c) => c.p >= CONFIDENCE_MIN && c.support >= SUPPORT_MIN
+    );
+    if (!entry.length) return null;
+
+    let beams = entry.map((c) => ({
+      words: [c.w],
+      ctx: context.concat(stem(c.w)),
+      logp: Math.log(c.p),
+      done: false,
+    }));
+
+    for (let step = 1; step < MAX_EMIT; step++) {
+      const next = [];
+      for (const b of beams) {
+        if (b.done) {
+          next.push(b);
+          continue;
+        }
+        const exps = topNext(grams, b.ctx, BEAM_WIDTH).filter(
+          (c) => c.p >= BEAM_STEP_MIN && c.support >= SUPPORT_MIN
+        );
+        if (!exps.length) {
+          next.push({ ...b, done: true });
+          continue;
+        }
+        for (const c of exps) {
+          next.push({
+            words: b.words.concat(c.w),
+            ctx: b.ctx.concat(stem(c.w)),
+            logp: b.logp + Math.log(c.p),
+            done: false,
+          });
+        }
+      }
+      next.sort((a, b) => b.logp - a.logp);
+      beams = next.slice(0, BEAM_WIDTH);
+      if (beams.every((b) => b.done)) break;
     }
-    return out.length ? out.join(" ") : null;
+
+    // Emit the longest path whose per-word (geometric mean) confidence still
+    // clears the strict gate; among equals, the most probable path.
+    let best = null;
+    for (const b of beams) {
+      const geo = Math.exp(b.logp / b.words.length);
+      if (geo < CONFIDENCE_MIN) continue;
+      if (!best || b.words.length > best.words.length || (b.words.length === best.words.length && b.logp > best.logp)) {
+        best = b;
+      }
+    }
+    return best ? best.words.join(" ") : null;
   }
 
   // --- Public API ----------------------------------------------------------
@@ -598,5 +677,13 @@
     return c;
   }
 
-  window.PromptComplete = { getSuggestion, getCandidates, learn, sanitize };
+  // reset: drop the in-memory caches so the next call re-reads storage.
+  // Used by tests for isolation and by settings import to apply a new model.
+  function reset() {
+    ngramCache = null;
+    contCache = null;
+    wordsCache = null;
+  }
+
+  window.PromptComplete = { getSuggestion, getCandidates, learn, sanitize, reset };
 })();
