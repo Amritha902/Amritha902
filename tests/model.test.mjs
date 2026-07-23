@@ -312,6 +312,25 @@ test("all-caps typing continues in all-caps (CREAT → E)", async () => {
   assert.equal(s, "E", `caps should continue in caps, got ${JSON.stringify(s)}`);
 });
 
+// --- Placeholder value suggestions (Fill Card) --------------------------------
+test("suggestValues proposes what the user actually writes after a lead-in", async () => {
+  store = {};
+  for (let i = 0; i < 3; i++)
+    await PC.learn("write an email to my manager about the deadline extension");
+  const vals = await PC.suggestValues("write an email to", 3);
+  assert.ok(vals.length > 0, "learned context should yield value chips");
+  assert.ok(
+    vals.some((v) => v.startsWith("my manager")),
+    `expected the user's own value, got ${JSON.stringify(vals)}`
+  );
+});
+
+test("suggestValues is empty for unseen context (no invented chips)", async () => {
+  store = {};
+  const vals = await PC.suggestValues("write an email to", 3);
+  assert.deepEqual(vals, [], `no history → no chips, got ${JSON.stringify(vals)}`);
+});
+
 // --- Leading prompts (guidance tier) -----------------------------------------
 test("leading tier guides an original draft the predictors have never seen", async () => {
   store = {};

@@ -677,6 +677,32 @@
     return c;
   }
 
+  // ---- Placeholder value suggestions (Fill Card) --------------------------
+  // Given the words immediately BEFORE a template placeholder ("write an
+  // email to ___"), ask the personal model what THIS user actually puts
+  // there. Chips are low-stakes UI hints the user must still click, so the
+  // gate is relaxed relative to ghost emission: P ≥ 0.2 to start a value,
+  // then up to two greedy extension words at P ≥ 0.5 ("my" → "my manager").
+  async function suggestValues(contextText, k = 3) {
+    await loadNgrams();
+    const context = stemAll(normalize(contextText));
+    if (context.length < 2) return [];
+    const starts = topNext(ngramCache, context, k * 2).filter((c) => c.p >= 0.2);
+    const out = [];
+    for (const c of starts.slice(0, k)) {
+      const words = [c.w];
+      let ctx = context.concat(stem(c.w));
+      for (let i = 0; i < 2; i++) {
+        const nx = topNext(ngramCache, ctx, 1)[0];
+        if (!nx || nx.p < 0.5) break;
+        words.push(nx.w);
+        ctx = ctx.concat(stem(nx.w));
+      }
+      out.push(words.join(" "));
+    }
+    return out;
+  }
+
   // reset: drop the in-memory caches so the next call re-reads storage.
   // Used by tests for isolation and by settings import to apply a new model.
   function reset() {
@@ -685,5 +711,5 @@
     wordsCache = null;
   }
 
-  window.PromptComplete = { getSuggestion, getCandidates, learn, sanitize, reset };
+  window.PromptComplete = { getSuggestion, getCandidates, learn, sanitize, reset, suggestValues };
 })();

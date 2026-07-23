@@ -316,6 +316,64 @@ await test("leading prompts: an original draft gets a guidance ghost that Tab-ac
   assert.ok(/be specific/.test(t), `Tab should accept the guidance, got ${JSON.stringify(t)}`);
 });
 
+// --- Placeholder Fill Card --------------------------------------------------
+
+await test("Fill Card pops after accepting an overview template and fills values", async () => {
+  await fresh();
+  await typeText("write an email");
+  assert.ok(await ghostVisible());
+  await page.keyboard.press("Tab");
+  await page.waitForSelector(".pc-fill", { state: "visible", timeout: 4000 });
+  await page.fill('.pc-fill input[data-ph="recipient"]', "my boss");
+  await page.fill('.pc-fill input[data-ph="topic"]', "the launch");
+  await page.click(".pc-fill-apply");
+  await page.waitForTimeout(300);
+  const t = await text();
+  assert.ok(t.includes("to my boss about the launch"), `values not substituted: ${JSON.stringify(t)}`);
+  assert.ok(!t.includes("{recipient}"), "placeholder token should be gone");
+});
+
+await test("Fill Card shows personal-model chips and a chip click fills the input", async () => {
+  await fresh();
+  await page.evaluate(async () => {
+    for (let i = 0; i < 3; i++)
+      await window.PromptComplete.learn("write an email to my manager about the deadline extension");
+  });
+  await typeText("write an email");
+  assert.ok(await ghostVisible());
+  await page.keyboard.press("Tab");
+  await page.waitForSelector(".pc-fill", { state: "visible", timeout: 4000 });
+  await page.waitForSelector(".pc-fill-chip-ml", { state: "visible", timeout: 4000 });
+  const chip = await page.locator(".pc-fill-chip-ml").first().textContent();
+  assert.ok(chip.startsWith("my manager"), `ML chip should be the user's own value, got ${JSON.stringify(chip)}`);
+  await page.locator(".pc-fill-chip-ml").first().click();
+  const filled = await page.inputValue('.pc-fill input[data-ph="recipient"]');
+  assert.ok(filled.startsWith("my manager"), `chip click should fill the input, got ${JSON.stringify(filled)}`);
+});
+
+await test("Esc keeps placeholders; word completions never pop the card", async () => {
+  await fresh();
+  await typeText("write an email");
+  assert.ok(await ghostVisible());
+  await page.keyboard.press("Tab");
+  await page.waitForSelector(".pc-fill", { state: "visible", timeout: 4000 });
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(200);
+  assert.equal(await page.locator(".pc-fill").isVisible(), false, "Esc should close the card");
+  assert.ok((await text()).includes("{recipient}"), "placeholders must survive Esc");
+  // Word completion accept → no card.
+  await fresh();
+  await page.evaluate(async () => {
+    await window.PromptComplete.learn("hello can you help me with my report");
+    await window.PromptComplete.learn("hello i need a summary of this paper");
+  });
+  await typeText("h");
+  assert.ok(await ghostVisible());
+  await page.keyboard.press("Tab");
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator(".pc-fill").isVisible().catch(() => false), false, "no card for word completions");
+});
+
 // --- Garble repair ("did you mean") ---------------------------------------
 
 await test("garbled tail shows a repair chip and Ctrl+. applies it", async () => {

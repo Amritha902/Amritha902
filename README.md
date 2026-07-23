@@ -38,6 +38,12 @@ nothing. PromptComplete turns it into an IDE for prompts:
   good") into a structured, Claude-grade prompt.
 - **`/` scaffold palette** — 16 curated prompt patterns (roles, XML tags, examples,
   chain-of-thought, output formats) with Tab-navigable `{{placeholders}}`.
+- **Placeholder Fill Card** — accepting an overview template pops a small card
+  with one input per `{placeholder}`. Each row offers chips from two sources:
+  the **personal model queried with the surrounding context** (after
+  "email to…" it proposes *my manager* because that's what *you* write there)
+  plus curated type suggestions. Enter substitutes everything; Esc keeps the
+  placeholders. Word/phrase completions never pop it.
 - **Prompt Lab** — every sent prompt logged locally like an ML experiment: health
   score, size, missing techniques, plus your acceptance-rate trend over time.
 - **Garble repair** — badly-typed tails ("computign", "understandingkinda") get a
@@ -118,8 +124,8 @@ Anthropic API key. Ghost completions default to `claude-haiku-4-5` (latency);
 the Intent Compiler defaults to `claude-sonnet-5` (quality). Your key lives in
 your browser's extension storage and is sent only to `api.anthropic.com`.
 
-Run the tests: `npm test` (61 unit tests, zero dependencies) and
-`npm run test:e2e` (30 Playwright assertions: every keyboard interaction in
+Run the tests: `npm test` (63 unit tests, zero dependencies) and
+`npm run test:e2e` (33 Playwright assertions: every keyboard interaction in
 the demo composer, all three extension pages, and a real-Chrome load of the
 unpacked extension with its MV3 service worker). `npm run bench` reproduces
 every performance and accuracy number in

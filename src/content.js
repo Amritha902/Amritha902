@@ -362,6 +362,197 @@
     return true;
   }
 
+  // --- Placeholder Fill Card ----------------------------------------------
+  // Accepting a broad "overview" template leaves {placeholders} in the
+  // draft. Instead of making the user hand-edit each one, a small card pops
+  // up with one input per placeholder. Two suggestion sources per row:
+  //   1. the PERSONAL MODEL — the n-gram engine is queried with the words
+  //      right before the placeholder ("write an email to ___"), so the
+  //      chips are what THIS user actually writes there ("my manager")
+  //   2. curated type chips keyed off the placeholder's name
+  // Enter (or ✓) substitutes every filled value; Esc keeps the placeholders.
+  let fillEl = null;
+
+  const FILL_TYPE_CHIPS = {
+    recipient: ["my manager", "my professor", "the team", "a client"],
+    topic: ["the deadline", "the project status", "next week's plan"],
+    tone: ["formal", "friendly", "direct"],
+    format: ["3 bullets", "a table", "short paragraphs"],
+    role: ["a senior data analyst", "a career coach", "a code reviewer"],
+    audience: ["beginners", "my team", "executives"],
+    goal: ["a working first draft", "a clear decision", "a study plan"],
+    task: ["review my draft", "plan the week", "debug this error"],
+    concept: ["transformers", "cash flow", "gradient descent"],
+  };
+  function chipsFor(name) {
+    const n = name.toLowerCase();
+    for (const key of Object.keys(FILL_TYPE_CHIPS)) {
+      if (n.includes(key)) return FILL_TYPE_CHIPS[key];
+    }
+    return [];
+  }
+
+  function hideFill() {
+    if (fillEl) fillEl.style.display = "none";
+  }
+
+  function fillPlaceholders(text) {
+    const seen = new Set();
+    const out = [];
+    for (const m of text.matchAll(/\{([^{}]+)\}/g)) {
+      if (!seen.has(m[1])) {
+        seen.add(m[1]);
+        out.push(m[1]);
+      }
+    }
+    return out;
+  }
+
+  function ensureFillCard() {
+    if (fillEl) return fillEl;
+    fillEl = document.createElement("div");
+    fillEl.className = "pc-fill";
+    document.body.appendChild(fillEl);
+    return fillEl;
+  }
+
+  function showFillCard(el, names) {
+    const card = ensureFillCard();
+    card.textContent = "";
+    const head = document.createElement("div");
+    head.className = "pc-fill-head";
+    head.textContent = "Fill in the details";
+    const hint = document.createElement("span");
+    hint.className = "pc-fill-hint";
+    hint.textContent = "Enter applies · Esc keeps {placeholders}";
+    head.appendChild(hint);
+    card.appendChild(head);
+
+    for (const name of names) {
+      const row = document.createElement("div");
+      row.className = "pc-fill-row";
+      const label = document.createElement("label");
+      label.textContent = name.replace(/_/g, " ").replace(/\s*\|.*$/, "");
+      const input = document.createElement("input");
+      input.type = "text";
+      input.dataset.ph = name;
+      input.placeholder = "…";
+      row.appendChild(label);
+      row.appendChild(input);
+      const chips = document.createElement("div");
+      chips.className = "pc-fill-chips";
+      row.appendChild(chips);
+      card.appendChild(row);
+
+      const addChip = (value, cls) => {
+        if ([...chips.children].some((c) => c.textContent === value)) return;
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "pc-fill-chip" + (cls ? " " + cls : "");
+        chip.textContent = value;
+        chip.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          input.value = value;
+          input.focus();
+        });
+        chips.appendChild(chip);
+      };
+
+      // Personal-model chips: query the engine with the words right before
+      // this placeholder in the actual draft. Async — chips pop in.
+      const draft = readText(el);
+      const at = draft.indexOf("{" + name + "}");
+      if (at > 0 && window.PromptComplete && window.PromptComplete.suggestValues) {
+        const before = draft.slice(0, at).trim().split(/\s+/).slice(-5).join(" ");
+        window.PromptComplete.suggestValues(before, 2).then((vals) => {
+          vals.forEach((v) => addChip(v, "pc-fill-chip-ml"));
+        });
+      }
+      chipsFor(name).slice(0, 3).forEach((v) => addChip(v));
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "pc-fill-actions";
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.className = "pc-fill-apply";
+    apply.textContent = "✓ Fill in";
+    apply.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      applyFill(el);
+    });
+    const skip = document.createElement("button");
+    skip.type = "button";
+    skip.className = "pc-fill-skip";
+    skip.textContent = "keep placeholders";
+    skip.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      hideFill();
+      el.focus();
+    });
+    actions.appendChild(apply);
+    actions.appendChild(skip);
+    card.appendChild(actions);
+
+    card.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        applyFill(el);
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        hideFill();
+        el.focus();
+      }
+    });
+
+    const rect = caretRect(el) || el.getBoundingClientRect();
+    card.style.left = Math.max(8, Math.min(rect.left, innerWidth - 380)) + "px";
+    card.style.top = Math.min(rect.top + (rect.height || 20) + 10, innerHeight - 60) + "px";
+    card.style.display = "block";
+    // Deliberately NOT auto-focused: stealing focus would hijack the user's
+    // next keystrokes (and Enter would apply instead of send). Clicking an
+    // input or a chip engages the card; typing in the composer dismisses it.
+  }
+
+  /** Substitute every filled value for its {placeholder} in the draft. */
+  function applyFill(el) {
+    if (!fillEl) return;
+    const values = [...fillEl.querySelectorAll("input[data-ph]")]
+      .map((i) => ({ token: "{" + i.dataset.ph + "}", value: i.value.trim() }))
+      .filter((v) => v.value);
+    hideFill();
+    el.focus();
+    for (const { token, value } of values) {
+      if (el.tagName === "TEXTAREA") {
+        suppressInputUntil = Date.now() + 80;
+        el.value = el.value.split(token).join(value);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      } else {
+        // Contenteditable: locate each occurrence in text-node coordinates,
+        // select it, replace via insertText (keeps undo history intact).
+        let guard = 0;
+        for (;;) {
+          const at = repairText(el).indexOf(token);
+          if (at === -1 || guard++ > 20) break;
+          if (!selectTextRange(el, at, at + token.length)) break;
+          suppressInputUntil = Date.now() + 80;
+          try {
+            document.execCommand("insertText", false, value);
+          } catch (_) {
+            break;
+          }
+        }
+      }
+    }
+    // Caret to the end, health rescored on the completed draft.
+    const len = el.tagName === "TEXTAREA" ? el.value.length : repairText(el).length;
+    if (el.tagName === "TEXTAREA") el.setSelectionRange(len, len);
+    else selectTextRange(el, len, len);
+    updateHealth(el);
+  }
+
   // --- Suggestion flow ----------------------------------------------------
   function paletteActive() {
     return (
@@ -390,6 +581,7 @@
     clearTimeout(debounceTimer);
     if (!settings.enabled) return;
     debounceTimer = setTimeout(async () => {
+      hideFill(); // fresh typing means the user moved on from the card
       if (el !== activeInput || paletteActive()) {
         hideRepair();
         return hideGhost();
@@ -494,6 +686,10 @@
       abortCtl.abort();
       abortCtl = null;
     }
+    // Broad "overview" templates carry {placeholders} — offer the Fill Card.
+    // Word/phrase completions never contain braces, so they never pop it.
+    const phs = fillPlaceholders(text);
+    if (phs.length) showFillCard(el, phs);
     return true;
   }
 
@@ -598,6 +794,7 @@
         return;
       }
       // Dismiss with Escape.
+      if (e.key === "Escape") hideFill();
       if (e.key === "Escape" && pendingRepair) hideRepair();
       if (e.key === "Escape" && currentSuggestion) {
         bumpStat("dismissed");
@@ -616,6 +813,7 @@
         }
         hideGhost();
         hideRepair();
+        hideFill();
         return;
       }
       // Any other navigation/caret key hides the stale ghost.
@@ -882,6 +1080,7 @@
     hideGhost();
     hideHealth();
     hideRepair();
+    hideFill();
   };
   window.addEventListener("scroll", hideOverlays, true);
   window.addEventListener("resize", hideOverlays, true);
@@ -901,6 +1100,7 @@
       overlayPointerDown = !!(
         (ringEl && ringEl.contains(t)) ||
         (panelEl && panelEl.contains(t)) ||
+        (fillEl && fillEl.contains(t)) ||
         (t.closest && t.closest(".pc-palette"))
       );
     },
@@ -916,6 +1116,7 @@
         to &&
         ((ringEl && ringEl.contains(to)) ||
           (panelEl && panelEl.contains(to)) ||
+          (fillEl && fillEl.contains(to)) ||
           (to.closest && to.closest(".pc-palette")))
       ) {
         return;

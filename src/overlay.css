@@ -31,6 +31,89 @@
   letter-spacing: 0.02em;
 }
 
+/* --- Placeholder Fill Card ------------------------------------------------ */
+.pc-fill {
+  position: fixed;
+  z-index: 2147483647;
+  display: none;
+  width: min(360px, calc(100vw - 24px));
+  background: #fdfcfa;
+  border: 1px solid #e3dfd3;
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(60, 50, 40, 0.16);
+  padding: 12px 14px;
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #3d3929;
+}
+.pc-fill-head {
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.pc-fill-hint { font-weight: 400; font-size: 11px; color: #a9a498; }
+.pc-fill-row { margin: 7px 0; }
+.pc-fill-row label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: #8d876f;
+  margin-bottom: 2px;
+  text-transform: capitalize;
+}
+.pc-fill-row input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #e3dfd3;
+  border-radius: 8px;
+  padding: 5px 8px;
+  font: inherit;
+  color: inherit;
+  background: #fff;
+  outline: none;
+}
+.pc-fill-row input:focus { border-color: #cc785c; }
+.pc-fill-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.pc-fill-chip {
+  border: 1px solid #e3dfd3;
+  background: #f7f5ef;
+  color: #5e5a4e;
+  border-radius: 999px;
+  padding: 1px 9px;
+  font: 11.5px/1.6 inherit;
+  cursor: pointer;
+}
+.pc-fill-chip:hover { border-color: #cc785c; color: #b8613f; }
+/* Personal-model suggestions get the coral tint — they're "yours". */
+.pc-fill-chip-ml { border-color: #cc785c; background: #fbf1ec; color: #b8613f; }
+.pc-fill-actions { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+.pc-fill-apply {
+  border: none;
+  background: #cc785c;
+  color: #fff;
+  border-radius: 8px;
+  padding: 5px 14px;
+  font: 600 12.5px/1.6 inherit;
+  cursor: pointer;
+}
+.pc-fill-apply:hover { background: #b8613f; }
+.pc-fill-skip {
+  border: none;
+  background: none;
+  color: #a9a498;
+  font: 12px/1.6 inherit;
+  cursor: pointer;
+}
+.pc-fill-skip:hover { color: #5e5a4e; }
+@media (prefers-color-scheme: dark) {
+  .pc-fill { background: #2a2925; border-color: #45433c; color: #e8e6df; }
+  .pc-fill-row input { background: #211f1c; border-color: #45433c; color: #e8e6df; }
+  .pc-fill-chip { background: #34322c; border-color: #45433c; color: #c9c5b9; }
+  .pc-fill-chip-ml { background: #3d2c24; border-color: #cc785c; color: #e6a58c; }
+}
+
 /* --- Prompt Health ring --------------------------------------------------- */
 .pc-ring {
   position: fixed;
