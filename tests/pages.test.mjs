@@ -67,6 +67,7 @@ const SEED = {
       { t: Date.now(), words: 28, health: 100, missing: [] },
     ],
     pc_ngrams: { "write an email": { to: 4 }, "analyze the churn": { cohort: 3 } },
+    pc_words: { email: 6, dashboard: 3 },
   },
   sync: { enabled: true, mode: "local" },
 };
@@ -131,6 +132,7 @@ await test("options: model export downloads a valid bundle", async () => {
   const bundle = JSON.parse(readFileSync(path, "utf8"));
   assert.equal(bundle.format, "promptcomplete-model-v1");
   assert.ok(bundle.pc_ngrams["write an email"], "exported bundle should carry the seeded model");
+  assert.equal(bundle.pc_words.email, 6, "exported bundle must carry the word-completion vocabulary");
   assert.equal(errors.length, 0, `page errors: ${errors.join("; ")}`);
   await page.context().close();
 });
@@ -145,6 +147,7 @@ await test("options: model import replaces the model; junk is rejected", async (
         format: "promptcomplete-model-v1",
         pc_ngrams: { "deploy the staging": { branch: 5 } },
         pc_cont: { counts: { branch: 1 }, pairs: 1 },
+        pc_words: { branch: 4, staging: 2 },
       })
     ),
   };
@@ -153,6 +156,9 @@ await test("options: model import replaces the model; junk is rejected", async (
   const grams = await page.evaluate(() => window.__pcStore.local.pc_ngrams);
   assert.ok(grams["deploy the staging"], "imported model should be active");
   assert.ok(!grams["write an email"], "import should replace, not merge");
+  const words = await page.evaluate(() => window.__pcStore.local.pc_words);
+  assert.equal(words.branch, 4, "imported vocabulary should be active");
+  assert.ok(!words.email, "vocabulary import should replace, not merge");
 
   await page.setInputFiles("#import-file", {
     name: "junk.json",

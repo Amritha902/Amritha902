@@ -374,23 +374,62 @@
   // Enter (or ✓) substitutes every filled value; Esc keeps the placeholders.
   let fillEl = null;
 
+  // Curated suggestions per placeholder TYPE. Values are concrete and
+  // ready-to-use, not generic filler — every placeholder a template can emit
+  // is covered, so no row ever renders empty.
   const FILL_TYPE_CHIPS = {
-    recipient: ["my manager", "my professor", "the team", "a client"],
-    topic: ["the deadline", "the project status", "next week's plan"],
+    recipient: ["my manager", "my professor", "my teammate", "the hiring team", "a client"],
+    language: ["Spanish", "French", "Hindi", "German", "Japanese", "Mandarin"],
+    role: [
+      "a senior data scientist",
+      "an experienced Python engineer",
+      "a technical writer",
+      "a career coach",
+      "a code reviewer",
+    ],
+    first_task: [
+      "explain the key trade-offs",
+      "outline a step-by-step plan",
+      "review my draft for gaps",
+    ],
+    goal: [
+      "ship an MVP in two weeks",
+      "pass the certification exam",
+      "land a data science internship",
+    ],
+    thing: ["study plan", "project roadmap", "React component", "SQL query", "lesson outline"],
     tone: ["formal", "friendly", "direct"],
-    format: ["3 bullets", "a table", "short paragraphs"],
-    role: ["a senior data analyst", "a career coach", "a code reviewer"],
-    audience: ["beginners", "my team", "executives"],
-    goal: ["a working first draft", "a clear decision", "a study plan"],
+    format: ["3 bullets", "a table", "short paragraphs", "numbered steps"],
+    audience: ["beginners", "my team", "executives", "a technical reviewer"],
     task: ["review my draft", "plan the week", "debug this error"],
-    concept: ["transformers", "cash flow", "gradient descent"],
+    concept: ["transformers", "gradient descent", "cash flow", "big-O notation"],
   };
-  function chipsFor(name) {
-    const n = name.toLowerCase();
-    for (const key of Object.keys(FILL_TYPE_CHIPS)) {
-      if (n.includes(key)) return FILL_TYPE_CHIPS[key];
+
+  // Context-sensitive placeholders ({topic}, {goal}) mean different things
+  // after different lead-ins. The values are keyed off the VERB just before
+  // the placeholder so an email topic and a "tell me about" topic differ.
+  const FILL_CONTEXT_CHIPS = {
+    topic: {
+      email: ["the Q3 launch timeline", "the project status update", "the meeting reschedule"],
+      tell: ["how transformers work", "the history of Rome", "how compound interest works"],
+      need: ["structuring my resume", "debugging a memory leak", "planning a study schedule"],
+      _default: ["the quarterly roadmap", "the onboarding process", "the budget review"],
+    },
+  };
+
+  /** Concrete chips for a placeholder, specialized by the preceding words. */
+  function chipsFor(name, leadIn) {
+    const n = name.toLowerCase().replace(/\s*\|.*$/, "").trim();
+    const key = Object.keys(FILL_TYPE_CHIPS).find((k) => n.includes(k));
+    const ctx = FILL_CONTEXT_CHIPS[n] || (key && FILL_CONTEXT_CHIPS[key]);
+    if (ctx) {
+      const lead = (leadIn || "").toLowerCase();
+      for (const bucket of Object.keys(ctx)) {
+        if (bucket !== "_default" && lead.includes(bucket)) return ctx[bucket];
+      }
+      return ctx._default;
     }
-    return [];
+    return key ? FILL_TYPE_CHIPS[key] : [];
   }
 
   function hideFill() {
@@ -433,11 +472,17 @@
       const row = document.createElement("div");
       row.className = "pc-fill-row";
       const label = document.createElement("label");
-      label.textContent = name.replace(/_/g, " ").replace(/\s*\|.*$/, "");
+      // Human-readable: drop the "_eg_…"/"| alternative" author hints and
+      // underscores ("first_task" → "first task").
+      label.textContent = name
+        .replace(/_eg_.*$/i, "")
+        .replace(/\s*\|.*$/, "")
+        .replace(/_/g, " ")
+        .trim();
       const input = document.createElement("input");
       input.type = "text";
       input.dataset.ph = name;
-      input.placeholder = "…";
+      input.placeholder = "type a value or pick one below";
       row.appendChild(label);
       row.appendChild(input);
       const chips = document.createElement("div");
@@ -445,31 +490,39 @@
       row.appendChild(chips);
       card.appendChild(row);
 
-      const addChip = (value, cls) => {
-        if ([...chips.children].some((c) => c.textContent === value)) return;
+      const addChip = (value, cls, front) => {
+        if ([...chips.children].some((c) => c.dataset.v === value)) return;
         const chip = document.createElement("button");
         chip.type = "button";
         chip.className = "pc-fill-chip" + (cls ? " " + cls : "");
+        chip.dataset.v = value;
         chip.textContent = value;
         chip.addEventListener("mousedown", (e) => {
           e.preventDefault();
           input.value = value;
           input.focus();
         });
-        chips.appendChild(chip);
+        if (front && chips.firstChild) chips.insertBefore(chip, chips.firstChild);
+        else chips.appendChild(chip);
       };
 
-      // Personal-model chips: query the engine with the words right before
-      // this placeholder in the actual draft. Async — chips pop in.
+      // The words right before this placeholder in the actual draft — used
+      // both to specialize curated chips and to query the personal model.
       const draft = readText(el);
       const at = draft.indexOf("{" + name + "}");
-      if (at > 0 && window.PromptComplete && window.PromptComplete.suggestValues) {
-        const before = draft.slice(0, at).trim().split(/\s+/).slice(-5).join(" ");
-        window.PromptComplete.suggestValues(before, 2).then((vals) => {
-          vals.forEach((v) => addChip(v, "pc-fill-chip-ml"));
+      const before = at > 0 ? draft.slice(0, at).trim() : "";
+      const leadIn = before.split(/\s+/).slice(-6).join(" ");
+
+      // Curated, context-specialized chips first (always present).
+      chipsFor(name, leadIn).slice(0, 4).forEach((v) => addChip(v));
+
+      // Personal-model chips: what THIS user actually writes here. Async, and
+      // inserted at the FRONT (coral-tinted) so "yours" outranks curated.
+      if (before && window.PromptComplete && window.PromptComplete.suggestValues) {
+        window.PromptComplete.suggestValues(leadIn, 3).then((vals) => {
+          vals.reverse().forEach((v) => addChip(v, "pc-fill-chip-ml", true));
         });
       }
-      chipsFor(name).slice(0, 3).forEach((v) => addChip(v));
     }
 
     const actions = document.createElement("div");

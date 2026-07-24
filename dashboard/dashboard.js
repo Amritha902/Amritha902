@@ -233,7 +233,7 @@ function load() {
   );
 }
 
-const ALL_KEYS = ["pc_stats", "pc_ngrams", "pc_cont", "pc_stats_daily", "pc_lengths", "pc_lab"];
+const ALL_KEYS = ["pc_stats", "pc_ngrams", "pc_cont", "pc_words", "pc_stats_daily", "pc_lengths", "pc_lab"];
 
 $("export").addEventListener("click", () => {
   chrome.storage.local.get(ALL_KEYS, (data) => {
@@ -254,6 +254,7 @@ $("reset").addEventListener("click", () => {
       pc_stats: { shown: 0, accepted: 0, dismissed: 0, chars_saved: 0 },
       pc_ngrams: {},
       pc_cont: { counts: {}, pairs: 0 },
+      pc_words: {},
       pc_stats_daily: {},
       pc_lengths: [],
       pc_lab: [],

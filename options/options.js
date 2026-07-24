@@ -92,10 +92,13 @@ testBtn.addEventListener("click", () => {
 });
 
 // --- Personal model export / import -----------------------------------------
-// The model is two structures: pc_ngrams (history -> continuation counts) and
-// pc_cont (Kneser-Ney continuation counts). Export bundles both with a format
-// tag; import validates the tag and shape before replacing.
-const MODEL_KEYS = ["pc_ngrams", "pc_cont"];
+// The model is three structures: pc_ngrams (history -> continuation counts),
+// pc_cont (Kneser-Ney continuation counts), and pc_words (the user's unigram
+// vocabulary — powers personalized word completion). Export bundles all three
+// with a format tag; import validates the tag and shape before replacing.
+// Bundles exported before pc_words existed import cleanly (vocabulary starts
+// empty and relearns).
+const MODEL_KEYS = ["pc_ngrams", "pc_cont", "pc_words"];
 const MODEL_FORMAT = "promptcomplete-model-v1";
 const modelResult = document.getElementById("model-result");
 
@@ -112,6 +115,7 @@ document.getElementById("export-model").addEventListener("click", () => {
       exported_at: new Date().toISOString(),
       pc_ngrams: data.pc_ngrams || {},
       pc_cont: data.pc_cont || { counts: {}, pairs: 0 },
+      pc_words: data.pc_words || {},
     };
     const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -141,7 +145,8 @@ document.getElementById("import-file").addEventListener("change", async (e) => {
       bundle.pc_cont && typeof bundle.pc_cont.counts === "object"
         ? bundle.pc_cont
         : { counts: {}, pairs: 0 };
-    chrome.storage.local.set({ pc_ngrams: bundle.pc_ngrams, pc_cont: cont }, () => {
+    const words = bundle.pc_words && typeof bundle.pc_words === "object" ? bundle.pc_words : {};
+    chrome.storage.local.set({ pc_ngrams: bundle.pc_ngrams, pc_cont: cont, pc_words: words }, () => {
       modelStatus(`Imported ${Object.keys(bundle.pc_ngrams).length} phrases ✓`, true);
     });
   } catch (err) {

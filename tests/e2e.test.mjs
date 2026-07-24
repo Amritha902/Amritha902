@@ -370,6 +370,36 @@ await test("Fill Card shows personal-model chips and a chip click fills the inpu
   assert.ok(filled.startsWith("my manager"), `chip click should fill the input, got ${JSON.stringify(filled)}`);
 });
 
+await test("Fill Card gives every placeholder concrete chips (no empty rows)", async () => {
+  await fresh();
+  await typeText("translate"); // template has a {language} placeholder
+  assert.ok(await ghostVisible());
+  await page.keyboard.press("Tab");
+  await page.waitForSelector(".pc-fill", { state: "visible", timeout: 4000 });
+  const langChips = await page.locator('.pc-fill-row:has(input[data-ph="language"]) .pc-fill-chip').count();
+  assert.ok(langChips >= 3, `{language} row must have concrete chips, got ${langChips}`);
+  const first = await page
+    .locator('.pc-fill-row:has(input[data-ph="language"]) .pc-fill-chip')
+    .first()
+    .textContent();
+  assert.ok(/Spanish|French|Hindi|German/.test(first), `expected a real language, got ${JSON.stringify(first)}`);
+});
+
+await test("Fill Card chips are context-specific to the template (email topic)", async () => {
+  await fresh();
+  await typeText("write an email");
+  assert.ok(await ghostVisible());
+  await page.keyboard.press("Tab");
+  await page.waitForSelector(".pc-fill", { state: "visible", timeout: 4000 });
+  const topicChips = await page
+    .locator('.pc-fill-row:has(input[data-ph="topic"]) .pc-fill-chip')
+    .allTextContents();
+  assert.ok(
+    topicChips.some((c) => /launch|status|meeting|reschedule/.test(c)),
+    `email {topic} chips should be email-shaped, got ${JSON.stringify(topicChips)}`
+  );
+});
+
 await test("Esc keeps placeholders; word completions never pop the card", async () => {
   await fresh();
   await typeText("write an email");
