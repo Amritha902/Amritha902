@@ -563,45 +563,47 @@
     );
     if (!entry.length) return null;
 
-    let beams = entry.map((c) => ({
+    let active = entry.map((c) => ({
       words: [c.w],
       ctx: context.concat(stem(c.w)),
       logp: Math.log(c.p),
-      done: false,
     }));
+    // EVERY prefix a beam passes through is a candidate for emission — an
+    // adversarial review caught the original version silently dropping a
+    // qualifying one-word prefix when its (weaker) extension dragged the
+    // joint probability below the gate. Prefixes are snapshotted here as
+    // they are expanded, and dead-ended paths retire here too, so the
+    // active set only ever holds still-growing paths of EQUAL length —
+    // which also makes the raw-logp pruning sort a fair comparison (the
+    // review's second catch: frozen short stubs used to hog beam slots).
+    const candidatesOut = [...active];
 
     for (let step = 1; step < MAX_EMIT; step++) {
       const next = [];
-      for (const b of beams) {
-        if (b.done) {
-          next.push(b);
-          continue;
-        }
+      for (const b of active) {
         const exps = topNext(grams, b.ctx, BEAM_WIDTH).filter(
           (c) => c.p >= BEAM_STEP_MIN && c.support >= SUPPORT_MIN
         );
-        if (!exps.length) {
-          next.push({ ...b, done: true });
-          continue;
-        }
         for (const c of exps) {
           next.push({
             words: b.words.concat(c.w),
             ctx: b.ctx.concat(stem(c.w)),
             logp: b.logp + Math.log(c.p),
-            done: false,
           });
         }
       }
+      if (!next.length) break;
       next.sort((a, b) => b.logp - a.logp);
-      beams = next.slice(0, BEAM_WIDTH);
-      if (beams.every((b) => b.done)) break;
+      active = next.slice(0, BEAM_WIDTH);
+      candidatesOut.push(...active);
     }
 
     // Emit the longest path whose per-word (geometric mean) confidence still
-    // clears the strict gate; among equals, the most probable path.
+    // clears the strict gate; among equals, the most probable path. The
+    // entry word always qualifies (its P cleared the gate outright), so the
+    // beam can never do worse than the old greedy first step.
     let best = null;
-    for (const b of beams) {
+    for (const b of candidatesOut) {
       const geo = Math.exp(b.logp / b.words.length);
       if (geo < CONFIDENCE_MIN) continue;
       if (!best || b.words.length > best.words.length || (b.words.length === best.words.length && b.logp > best.logp)) {

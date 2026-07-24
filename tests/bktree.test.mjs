@@ -34,14 +34,26 @@ test("single insert, delete, and substitute each cost 1", () => {
   assert.equal(BK.distance("computung", "computing"), 1); // substitute "u"->"i"
 });
 
-test("compound edits accumulate (and OSA is the RESTRICTED variant)", () => {
+test("compound edits accumulate (TRUE Damerau-Levenshtein, not OSA)", () => {
   // transpose "ab"->"ba" plus substitute "e"->"f" = 2
   assert.equal(BK.distance("abcde", "bacdf"), 2);
   assert.equal(BK.distance("kitten", "sitting"), 3);
-  // The OSA signature: unrestricted Damerau-Levenshtein scores this 2
-  // (transpose then insert into the swapped pair); OSA forbids editing a
-  // transposed pair again, so it must be 3.
-  assert.equal(BK.distance("ca", "abc"), 3);
+  // The unrestricted signature: transpose then insert INTO the swapped pair
+  // is allowed, so this is 2. (OSA scores it 3 — and thereby breaks the
+  // triangle inequality the BK prune depends on; see the metric test.)
+  assert.equal(BK.distance("ca", "abc"), 2);
+});
+
+test("the metric satisfies the triangle inequality (prune soundness)", () => {
+  // The exact triple that broke OSA: d(ca,ac)=1, d(ac,abc)=1 must bound
+  // d(ca,abc) by 2. Under OSA it was 3 and the prune silently lost hits.
+  assert.equal(BK.distance("ca", "ac"), 1);
+  assert.equal(BK.distance("ac", "abc"), 1);
+  assert.ok(BK.distance("ca", "abc") <= 2, "triangle inequality must hold");
+  // The minimal query that OSA's unsoundness broke:
+  const t = BK.create(["abc", "ac"]);
+  const hits = t.query("ca", 1).map((r) => r.w);
+  assert.ok(hits.includes("ac"), `query must find the d=1 word, got ${JSON.stringify(hits)}`);
 });
 
 test("early abandon returns max+1 once every row exceeds max", () => {

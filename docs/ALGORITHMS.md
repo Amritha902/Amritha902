@@ -41,15 +41,21 @@ Norvig-style generation enumerates every candidate string (~54n+25 for d=1,
 squared for d=2 — hundreds of thousands of strings for a 9-letter word).
 
 **Structure:** a BK-tree — a metric tree keyed by edit distance — over the
-lexicon. The metric is *restricted Damerau–Levenshtein* (OSA), so the most
-common real-world typo class (adjacent transposition, "computign") costs 1.
-Queries prune subtrees by the triangle inequality and abandon distance
-computations early once a whole DP row exceeds the bound. Tests prove pruned
-queries return exactly the brute-force result set.
+lexicon. The metric is **true (unrestricted) Damerau–Levenshtein**
+(Lowrance–Wagner), so adjacent transpositions ("computign") cost 1. The
+choice of *unrestricted* over the common OSA variant is load-bearing: an
+adversarial review proved OSA violates the triangle inequality
+(d(ca,ac)=1, d(ac,abc)=1, but OSA(ca,abc)=3), which made the BK prune
+silently lose real hits ("logrd" missed "lord"). True DL is a genuine
+metric *and* compositional — query(w, 2) covers exactly what two sequential
+single edits can reach, matching the Norvig fallback's coverage. Both
+failure cases are pinned as regression tests.
 
-**Measured:** total workload time **1.15s vs 7.1s** (**6.2×**), with the tail
-tamed — p95 **5.0ms vs 50.7ms** (Norvig's d=2 blowup) — at equal top-1
-accuracy (78.9% vs 79.1% on 750 seeded corruptions).
+**Measured:** total workload time **2.4s vs 5.1s** (**2.1×**) with the tail
+tamed — p95 **10.7ms vs 36.9ms** (Norvig's d=2 blowup) — at **identical**
+top-1 accuracy (79.1% vs 79.1% on 750 seeded corruptions). The earlier OSA
+version measured 6.2× but traded 0.2pt of accuracy for it by losing hits;
+soundness costs a factor ~3 and is worth it.
 
 ## 3. Language model — interpolated Kneser–Ney (`src/suggest.js`)
 
@@ -75,6 +81,13 @@ uncertain step — even when every branch re-converges ("deploy
 - expansion: later words explore at P ≥ 0.25 (n ≥ 2)
 - emission: a path is emitted only if its geometric-mean P ≥ 0.45;
   longest qualifying path wins, log-probability breaks ties
+
+Two subtleties, both caught by adversarial review and pinned as regression
+tests: every prefix a beam passes through stays an *emission candidate*
+(a qualifying one-word prefix must never be silenced by its own weaker
+extension — the beam can't do worse than greedy's first step), and
+dead-ended paths retire out of the active set instead of hogging beam
+slots, so pruning only ever compares still-growing paths of equal length.
 
 ## 5. Constrained decoding — the agreement engine
 
@@ -107,7 +120,7 @@ its trigger from a measured 10.7% share).
 ## Reproduce
 
 ```
-npm test          # 61 unit tests (model, repair, trie, BK-tree)
-npm run test:e2e  # 30 real-browser assertions
+npm test          # 67 unit tests (model, repair, trie, BK-tree)
+npm run test:e2e  # 33 real-browser assertions
 npm run bench     # every number in this document
 ```

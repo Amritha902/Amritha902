@@ -47,9 +47,9 @@ nothing. PromptComplete turns it into an IDE for prompts:
 - **Prompt Lab** — every sent prompt logged locally like an ML experiment: health
   score, size, missing techniques, plus your acceptance-rate trend over time.
 - **Garble repair** — badly-typed tails ("computign", "understandingkinda") get a
-  "Did you mean" chip with the cleaned version; `Ctrl+.` applies. Norvig-style
-  spelling correction (edit-distance candidates ranked by word frequency),
-  entirely on-device.
+  "Did you mean" chip with the cleaned version; `Ctrl+.` applies. True
+  Damerau–Levenshtein BK-tree search ranked by word frequency, entirely
+  on-device.
 
 Built Claude-first with a warm Claude-flavored theme. Also works on ChatGPT.
 
@@ -74,11 +74,12 @@ This is a working applied-ML system, not a snippet list:
   daily time-series trend, descriptive statistics, and one-click dataset export.
 - **Real data structures, really measured** — prefix completion runs on a
   weighted top-K trie (**255× faster** than a linear scan, p50 0.72µs, zero
-  correctness mismatches), spell repair on a Damerau–Levenshtein **BK-tree**
-  (6.2× faster than Norvig candidate generation at equal accuracy, p95
-  50.7ms → 5.0ms), and phrase prediction on **width-3 beam search** gated by
-  joint probability. Every number reproduces via `npm run bench` on real
-  corpus data — see [`docs/ALGORITHMS.md`](docs/ALGORITHMS.md).
+  correctness mismatches), spell repair on a true Damerau–Levenshtein
+  **BK-tree** (2.1× faster than Norvig candidate generation at identical
+  accuracy, worst-case p95 36.9ms → 10.7ms), and phrase prediction on
+  **width-3 beam search** gated by joint probability. Every number
+  reproduces via `npm run bench` on real corpus data — see
+  [`docs/ALGORITHMS.md`](docs/ALGORITHMS.md).
 - **A real data source, reproducibly** — the spelling/word-completion lexicon
   (`src/lexicon.js`, ~10k words) is generated from the
   [google-10000-english](https://github.com/first20hours/google-10000-english)
@@ -124,7 +125,7 @@ Anthropic API key. Ghost completions default to `claude-haiku-4-5` (latency);
 the Intent Compiler defaults to `claude-sonnet-5` (quality). Your key lives in
 your browser's extension storage and is sent only to `api.anthropic.com`.
 
-Run the tests: `npm test` (63 unit tests, zero dependencies) and
+Run the tests: `npm test` (67 unit tests, zero dependencies) and
 `npm run test:e2e` (33 Playwright assertions: every keyboard interaction in
 the demo composer, all three extension pages, and a real-Chrome load of the
 unpacked extension with its MV3 service worker). `npm run bench` reproduces

@@ -109,6 +109,40 @@ test("beam search survives a mid-phrase split that stops greedy decoding", async
   );
 });
 
+test("beam never loses a qualifying prefix to a weak extension (review regression)", async () => {
+  store = {};
+  // Entry word "tango" clears the gate (P≈0.49, support 6); its only
+  // continuation "victor" sits in the exploration band (0.25 ≤ P < 0.45) and
+  // dead-ends. The buggy beam replaced [tango] with [tango, victor]
+  // (geo-mean < 0.45) and emitted NOTHING; greedy emitted "tango".
+  await PC.learn("zulu yankee tango victor everyone waits");
+  await PC.learn("zulu yankee tango victor everyone waits");
+  await PC.learn("zulu yankee tango mike everyone waits");
+  await PC.learn("zulu yankee tango november everyone waits");
+  await PC.learn("zulu yankee tango oscar everyone waits");
+  await PC.learn("zulu yankee tango quebec everyone waits");
+  for (let i = 0; i < 5; i++) await PC.learn("zulu yankee foxtrot golf papa everyone");
+  const s = await PC.getSuggestion("zulu yankee ", { mode: "local" });
+  assert.ok(s && s.split(" ")[0] === "tango", `qualifying prefix must survive, got ${JSON.stringify(s)}`);
+});
+
+test("finished stubs never evict a growing path from the beam (review regression)", async () => {
+  store = {};
+  // "alpha" dead-ends instantly; "bravo" splits three ways where only
+  // "hotel" grows into a long confident chain. The buggy beam let the
+  // frozen [alpha] stub occupy a width slot and sliced off [bravo, hotel],
+  // emitting the 1-word "alpha" instead of the 6-word path.
+  for (let i = 0; i < 24; i++) await PC.learn("q1 q2 alpha");
+  for (let i = 0; i < 9; i++) await PC.learn("q1 q2 bravo delta");
+  for (let i = 0; i < 8; i++) await PC.learn("q1 q2 bravo echo");
+  for (let i = 0; i < 7; i++) await PC.learn("q1 q2 bravo hotel tango uniform victor whiskey");
+  const s = await PC.getSuggestion("q1 q2 ", { mode: "local" });
+  assert.ok(
+    s && s.split(" ").length >= 4,
+    `longest qualifying path must win over a short stub, got ${JSON.stringify(s)}`
+  );
+});
+
 // --- Stemming (evidence pooling) --------------------------------------------
 test("stemmed history keys pool evidence across inflections", async () => {
   store = {};

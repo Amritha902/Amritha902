@@ -44,6 +44,13 @@ test("repairs at least part of a heavily garbled tail", () => {
   assert.ok(out.endsWith("kinda"), `expected trailing fix, got ${out}`);
 });
 
+test("BK query soundness end-to-end: 'logrd' repairs to 'lord' (review regression)", () => {
+  // Under the unsound OSA prune this query lost its d=1 hit and the repair
+  // degraded to the split heuristic ("log rd").
+  const r = window.PromptRepair.repairTail("check the logrd");
+  assert.ok(r && /lord/.test(r.fixed), `expected lord, got ${JSON.stringify(r)}`);
+});
+
 test("stays silent on clean text", () => {
   assert.equal(apply("write an email"), null);
   assert.equal(apply("analyze the sales dataset"), null);
