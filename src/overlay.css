@@ -1,6 +1,12 @@
 /* PromptComplete — ghost-text overlay + hidden textarea mirror */
 
+@keyframes pc-ghost-in {
+  from { opacity: 0; }
+  to { opacity: 0.85; }
+}
+
 .pc-ghost {
+  animation: pc-ghost-in 90ms ease-out;
   position: fixed;
   z-index: 2147483647;
   /* clickable: tap/click accepts — the only accept path on touch keyboards,

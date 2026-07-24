@@ -74,11 +74,11 @@ FIFO eviction.
 
 ## 3. The inference pipeline (prediction path)
 
-Runs on the keystroke hot path (after a 220 ms debounce). Three tiers, tried
+Runs on the keystroke hot path (after an 80 ms debounce). Three tiers, tried
 in order; first confident answer wins:
 
 ```
- keystroke ─ debounce 220ms ─► Tier 1: personal n-gram LM
+ keystroke ─ debounce 80ms ─► Tier 1: personal n-gram LM
                                    │ (miss)
                                    ▼
                                Tier 2: curated templates — regex fast path
@@ -189,7 +189,7 @@ The hard constraint shaping every choice above. Per keystroke:
 
 | Step | Cost | Notes |
 |---|---|---|
-| Debounce | 220 ms (idle wait) | Absorbs typing bursts; no work while typing fast |
+| Debounce | 80 ms (idle wait) | Absorbs typing bursts; no work while typing fast |
 | Clean/parse | O(n) chars, ~0.01 ms | Single regex pass |
 | Stem | O(1) per token | Suffix rules only; no lookup table |
 | Tier 1 predict | O(k) per emitted word | k = distinct continuations of the history; typically < 10 |

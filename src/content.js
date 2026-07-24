@@ -16,7 +16,7 @@
   //   - The AI tier is a network call, so it waits for a further quiet
   //     period. Fast typists get local ghosts continuously and only spend an
   //     API call when they actually pause to think.
-  const DEBOUNCE_MS = 120;
+  const DEBOUNCE_MS = 80; // local tiers are sub-ms; the wait IS the latency
   const AI_EXTRA_QUIET_MS = 350;
   const DEFAULTS = { enabled: true, mode: "local", model: "claude-haiku-4-5" };
 
@@ -239,6 +239,7 @@
 
   function hideGhost() {
     currentSuggestion = null;
+    ghostAnchor = null;
     candidates = [];
     candidateIdx = 0;
     aiReq = null; // orphan any in-flight stream; the next request supersedes it
@@ -561,9 +562,20 @@
     );
   }
 
+  // Anchor for type-through: the composer text at the moment the suggestion
+  // was generated plus the full suggestion. While the user's next keystrokes
+  // MATCH the ghost, it is consumed character-by-character with zero
+  // recompute and zero flicker — the way Smart Compose feels.
+  let ghostAnchor = null;
+
   function setSuggestion(el, suggestion, isNew = true) {
     if (isNew && suggestion !== currentSuggestion) bumpStat("shown");
     currentSuggestion = suggestion;
+    // Re-anchor whenever the shown candidate changes (fresh suggestion OR
+    // Alt+] cycling) so type-through always tracks what is on screen.
+    if (!ghostAnchor || ghostAnchor.full !== suggestion) {
+      ghostAnchor = { text: readText(el), full: suggestion };
+    }
     showGhost(el, suggestion);
     updateCounterPill();
   }
@@ -745,6 +757,28 @@
           suppressInputUntil = 0;
           updateHealth(e.target);
           return;
+        }
+        // Type-through: keystrokes that MATCH the ghost consume it in place,
+        // instantly — no debounce, no recompute, no flicker.
+        if (currentSuggestion && ghostAnchor && caretAtEnd(e.target)) {
+          const now = readText(e.target);
+          if (now.startsWith(ghostAnchor.text)) {
+            const delta = now.slice(ghostAnchor.text.length);
+            if (delta.length && ghostAnchor.full.startsWith(delta) && delta.length < ghostAnchor.full.length) {
+              currentSuggestion = ghostAnchor.full.slice(delta.length);
+              candidates = [currentSuggestion];
+              candidateIdx = 0;
+              showGhost(e.target, currentSuggestion);
+              updateCounterPill();
+              updateHealth(e.target);
+              return;
+            }
+          }
+          // The keystroke DIVERGED from the ghost (or consumed all of it):
+          // the old ghost is wrong at the new caret — drop it immediately
+          // rather than letting a stale suggestion linger through the
+          // debounce window.
+          hideGhost();
         }
         requestSuggestion(e.target);
         updateHealth(e.target);
@@ -1125,4 +1159,16 @@
     },
     true
   );
+
+  // Pre-warm the index structures off the keystroke path: the trie (~30ms)
+  // and BK-tree (~160ms) otherwise build lazily on the FIRST suggestion or
+  // repair, which would jank exactly the moment the product first speaks.
+  const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1200));
+  idle(() => {
+    try {
+      if (window.PromptRepair && window.PromptRepair.warm) window.PromptRepair.warm();
+    } catch (_) {
+      /* warm-up is best-effort */
+    }
+  });
 })();

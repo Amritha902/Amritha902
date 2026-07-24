@@ -212,7 +212,15 @@
     return best;
   }
 
-  window.PromptRepair = { repairTail, isKnown };
+  // warm: build the index structures ahead of first use (called from the
+  // content script at idle) so the first keystroke never pays the ~30ms trie
+  // + ~160ms BK-tree construction cost.
+  function warm() {
+    getTrie();
+    getBK();
+  }
+
+  window.PromptRepair = { repairTail, isKnown, warm };
   // rank: lower = more frequent; Infinity for out-of-lexicon words. Lets the
   // suggestion engine apply the complete-word guard to PERSONAL candidates
   // too ("to" must not become "today" just because you say "today" a lot).

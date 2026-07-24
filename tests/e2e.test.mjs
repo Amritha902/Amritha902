@@ -129,6 +129,25 @@ await test("personal model predicts a learned continuation", async () => {
   assert.ok(g.includes("report"), `expected learned continuation, got ${JSON.stringify(g)}`);
 });
 
+await test("type-through: keystrokes matching the ghost consume it instantly", async () => {
+  await fresh();
+  await page.evaluate(async () => {
+    await window.PromptComplete.learn("hello can you help me with my report");
+    await window.PromptComplete.learn("hello i need a summary of this paper");
+  });
+  await typeText("h");
+  assert.ok(await ghostVisible());
+  const g0 = await page.locator(".pc-ghost").textContent();
+  assert.ok(g0.startsWith("ello"), `expected ello ghost, got ${JSON.stringify(g0)}`);
+  // Type the next matching characters ONE at a time with no delay budget for
+  // a debounce round-trip: the ghost must shrink synchronously.
+  await page.keyboard.type("el");
+  const g1 = await page.locator(".pc-ghost").textContent();
+  assert.ok(g1.startsWith("lo"), `ghost should have consumed "el" in place, got ${JSON.stringify(g1)}`);
+  const visible = await page.locator(".pc-ghost").isVisible();
+  assert.ok(visible, "ghost must stay visible through matching keystrokes");
+});
+
 // --- Palette & snippet mode -------------------------------------------------
 
 await test("/ opens the palette and typed text filters it", async () => {

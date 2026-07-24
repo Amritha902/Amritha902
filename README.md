@@ -96,7 +96,9 @@ Full design + formulas: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 | Path | Budget |
 |---|---|
-| Local tiers (model + templates + IR) | **< 1 ms** after a 120 ms debounce |
+| Keystrokes that match the ghost | **0 ms** — type-through consumes it in place, no recompute, no flicker |
+| Local tiers (model + templates + IR) | **< 1 ms** after an 80 ms debounce |
+| Index structures (trie + BK-tree) | built once at idle, pre-warmed off the keystroke path |
 | AI tier (opt-in) | streams token-by-token after a further 350 ms quiet gap; in-flight requests abort server-side on the next keystroke |
 | Training | runs at send time — never on the keystroke path |
 
@@ -126,7 +128,7 @@ the Intent Compiler defaults to `claude-sonnet-5` (quality). Your key lives in
 your browser's extension storage and is sent only to `api.anthropic.com`.
 
 Run the tests: `npm test` (67 unit tests, zero dependencies) and
-`npm run test:e2e` (33 Playwright assertions: every keyboard interaction in
+`npm run test:e2e` (34 Playwright assertions: every keyboard interaction in
 the demo composer, all three extension pages, and a real-Chrome load of the
 unpacked extension with its MV3 service worker). `npm run bench` reproduces
 every performance and accuracy number in
