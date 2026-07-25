@@ -34,8 +34,15 @@ const profile = mkdtempSync(join(tmpdir(), "pc-ext-"));
 
 const ctx = await chromium.launchPersistentContext(profile, {
   ...(existsSync("/opt/pw-browsers/chromium") ? { executablePath: "/opt/pw-browsers/chromium" } : {}),
-  headless: true,
+  // OLD headless Chrome does not load extensions AT ALL, so the MV3 service
+  // worker never registers — this is why CI failed while local passed. NEW
+  // headless (`--headless=new`) supports extensions and needs no display, so
+  // it works both locally and on a headless CI runner. --no-sandbox is
+  // required on the default GitHub Actions runner.
+  headless: false,
   args: [
+    "--headless=new",
+    "--no-sandbox",
     `--disable-extensions-except=${root}`,
     `--load-extension=${root}`,
   ],

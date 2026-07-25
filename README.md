@@ -1,6 +1,6 @@
 # PromptComplete
 
-[![CI](https://github.com/Amritha902/Amritha902/actions/workflows/ci.yml/badge.svg)](https://github.com/Amritha902/Amritha902/actions/workflows/ci.yml)
+[![CI](https://github.com/Amritha902/promptcomplete/actions/workflows/ci.yml/badge.svg)](https://github.com/Amritha902/promptcomplete/actions/workflows/ci.yml)
 
 **The prompt box, upgraded to an IDE — inline autocomplete, a live prompt-quality
 meter, one-click prompt compilation, and a local experiment lab. Claude-first.**
