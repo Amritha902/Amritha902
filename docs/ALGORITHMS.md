@@ -121,7 +121,7 @@ its trigger from a measured 10.7% share).
 ## Reproduce
 
 ```
-npm test          # 67 unit tests (model, repair, trie, BK-tree)
-npm run test:e2e  # 37 real-browser assertions
+npm test          # 70 unit tests (model, repair, trie, BK-tree)
+npm run test:e2e  # 38 real-browser assertions
 npm run bench     # every number in this document
 ```

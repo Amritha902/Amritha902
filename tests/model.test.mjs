@@ -388,6 +388,47 @@ test("leading tier stays silent once the draft scores well", async () => {
   assert.ok(!s || !/^\s?—/.test(s), `well-scored draft needs no guidance, got ${JSON.stringify(s)}`);
 });
 
+// --- Prompt Health v2: random-text robustness + learned calibration ----------
+test("health: garbled random text fails the vocabulary dimension; clean text passes", async () => {
+  store = {};
+  const g = window.PromptHealth.score("summarize zxqvv wkfjd qpwoe zzkft report");
+  const gd = g.dims.find((d) => d.key === "vocabulary");
+  assert.ok(gd && gd.applicable && !gd.ok, "keyboard-mash words must fail the readability check");
+  const c = window.PromptHealth.score("summarize the quarterly sales report now");
+  const cd = c.dims.find((d) => d.key === "vocabulary");
+  assert.ok(cd && cd.ok, "ordinary English must pass the readability check");
+});
+
+test("health: adaptive layer calibrates against the user's OWN prompt history", async () => {
+  store = {
+    pc_lab: [10, 20, 30, 40, 55, 60].map((h) => ({ t: 1, words: 12, health: h, missing: [] })),
+    pc_lengths: [10, 11, 9, 10, 12, 10],
+    pc_words: Object.fromEntries(
+      "analyze churn cohort retention dataset plot monthly revenue trend region report summary email manager deadline python pandas numpy sales figures metric".split(" ").map((w) => [w, 3])
+    ),
+  };
+  const s = await window.PromptHealth.scoreAdaptive(
+    "analyze the churn cohort retention dataset and report the monthly revenue trend"
+  );
+  assert.ok(s.personal, "adaptive result should carry a personal block");
+  assert.ok(
+    typeof s.personal.percentile === "number" && s.personal.percentile >= 0 && s.personal.percentile <= 100,
+    `percentile from the user's own distribution, got ${JSON.stringify(s.personal)}`
+  );
+  assert.ok(
+    typeof s.personal.domainMatch === "number" && s.personal.domainMatch > 50,
+    `an in-domain draft should match the learned vocabulary, got ${JSON.stringify(s.personal)}`
+  );
+  assert.ok(typeof s.personal.lengthZ === "number", "length judged vs the user's own lengths");
+});
+
+test("health: adaptive layer degrades gracefully with no history (new user)", async () => {
+  store = {};
+  const s = await window.PromptHealth.scoreAdaptive("summarize the quarterly sales report now please");
+  assert.ok(s.personal && s.personal.n === 0, "no history → no invented statistics");
+  assert.ok(!("percentile" in s.personal), "percentile requires a real distribution");
+});
+
 // --- Runner -----------------------------------------------------------------
 let failed = 0;
 for (const { name, fn } of tests) {

@@ -37,6 +37,21 @@
   letter-spacing: 0.02em;
 }
 
+/* Learned-from-you calibration lines in the health panel */
+.pc-panel-personal {
+  margin: 8px 0 2px;
+  padding: 7px 9px;
+  background: #fbf1ec;
+  border: 1px solid #edd9cf;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #8a5a44;
+  line-height: 1.6;
+}
+@media (prefers-color-scheme: dark) {
+  .pc-panel-personal { background: #3d2c24; border-color: #5a4034; color: #e6a58c; }
+}
+
 /* --- Placeholder Fill Card ------------------------------------------------ */
 .pc-fill {
   position: fixed;

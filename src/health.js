@@ -82,6 +82,25 @@
         ok: STRUCTURE_RE.test(t),
         hint: "Break this up — sections, bullet points, or <tags> around pasted material.",
       },
+      {
+        key: "vocabulary",
+        label: "Readable words",
+        // Sanity check that makes the meter robust to RANDOM text: judge the
+        // draft's tokens against the real lexicon plus the user's OWN learned
+        // vocabulary (their domain terms are valid even if rare in English).
+        // Garbled or keyboard-mash prompts fail here regardless of how many
+        // trigger keywords they happen to contain.
+        applicable: words >= 4 && !!window.PromptRepair,
+        ok: (() => {
+          if (!window.PromptRepair) return true;
+          const toks = (t.toLowerCase().match(/[a-z']{2,}/g) || []).filter((w) => w.length >= 3);
+          if (toks.length < 3) return true;
+          const own = _userVocab || {};
+          const known = toks.filter((w) => window.PromptRepair.isKnown(w) || own[w] >= 2).length;
+          return known / toks.length >= 0.7;
+        })(),
+        hint: "Several words look garbled — fix the typos so the model reads you right (Ctrl+. helps).",
+      },
     ];
 
     const applicable = dims.filter((d) => d.applicable);
@@ -93,5 +112,59 @@
     return { total, dims, words };
   }
 
-  window.PromptHealth = { score };
+  // ---- Learned personal calibration ---------------------------------------
+  // The static dimensions are a PRIOR — sensible defaults from published
+  // guidance. The adaptive layer learns from THIS user's own sent prompts
+  // (pc_lab feature history, pc_words vocabulary, pc_lengths) and judges the
+  // draft against their empirical distributions — statistics, not vibes:
+  //
+  //   percentile   empirical CDF of the draft's score within the user's own
+  //                sent-prompt scores ("better than 72% of your prompts")
+  //   domainMatch  share of the draft's content words that are part of the
+  //                user's learned vocabulary — is this prompt in YOUR domain?
+  //   lengthZ      z-score of the draft's length vs the user's own lengths
+  //
+  // All three update themselves automatically: every sent prompt appends to
+  // the same stores this reads. No thresholds are invented for the user —
+  // the user's history IS the reference distribution.
+  let _userVocab = null; // also feeds the vocabulary dimension above
+
+  async function scoreAdaptive(text) {
+    const s = score(text);
+    try {
+      const data = await chrome.storage.local.get(["pc_lab", "pc_words", "pc_lengths"]);
+      _userVocab = data.pc_words || {};
+      const lab = Array.isArray(data.pc_lab) ? data.pc_lab : [];
+      const lengths = Array.isArray(data.pc_lengths) ? data.pc_lengths : [];
+      const personal = { n: lab.length };
+
+      if (lab.length >= 5) {
+        const healths = lab.map((e) => e.health).filter((h) => typeof h === "number");
+        const below = healths.filter((h) => h < s.total).length;
+        const equal = healths.filter((h) => h === s.total).length;
+        // Mid-rank empirical percentile (ties split), 0..100.
+        personal.percentile = Math.round(((below + equal / 2) / healths.length) * 100);
+      }
+
+      const toks = (text.toLowerCase().match(/[a-z']{3,}/g) || []);
+      if (toks.length >= 3 && Object.keys(_userVocab).length >= 20) {
+        const inVocab = toks.filter((w) => _userVocab[w] >= 2).length;
+        personal.domainMatch = Math.round((inVocab / toks.length) * 100);
+      }
+
+      if (lengths.length >= 5) {
+        const mean = lengths.reduce((a, b) => a + b, 0) / lengths.length;
+        const sd = Math.sqrt(lengths.reduce((a, b) => a + (b - mean) ** 2, 0) / lengths.length) || 1;
+        personal.lengthZ = Math.round(((s.words - mean) / sd) * 10) / 10;
+        personal.typicalLength = Math.round(mean);
+      }
+
+      s.personal = personal;
+    } catch (_) {
+      /* storage unavailable (isolated harness) — static score stands alone */
+    }
+    return s;
+  }
+
+  window.PromptHealth = { score, scoreAdaptive };
 })();

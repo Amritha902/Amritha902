@@ -1069,6 +1069,20 @@
     fg.style.stroke = healthColor(lastHealth.total);
     ring.querySelector(".pc-ring-num").textContent = lastHealth.total;
     if (panelEl && panelEl.style.display !== "none") renderPanel();
+
+    // Learned layer: rescore against the user's OWN prompt history (async —
+    // storage read). Refreshes the ring and panel when it lands, as long as
+    // the draft hasn't changed underneath it.
+    if (window.PromptHealth.scoreAdaptive) {
+      window.PromptHealth.scoreAdaptive(text).then((h) => {
+        if (el !== activeInput || readText(el) !== text) return;
+        lastHealth = h;
+        fg.style.strokeDashoffset = C * (1 - h.total / 100);
+        fg.style.stroke = healthColor(h.total);
+        ring.querySelector(".pc-ring-num").textContent = h.total;
+        if (panelEl && panelEl.style.display !== "none") renderPanel();
+      });
+    }
   }
 
   function hideHealth() {
@@ -1108,11 +1122,29 @@
           `<span class="pc-dim-hint">${d.ok ? "" : d.hint}</span></div>`
       )
       .join("");
+    // Learned-from-you lines: the draft judged against the empirical
+    // distribution of the user's OWN sent prompts (see health.js).
+    let personal = "";
+    const p = lastHealth.personal;
+    if (p) {
+      const bits = [];
+      if (typeof p.percentile === "number")
+        bits.push(`Better than <b>${p.percentile}%</b> of your last ${p.n} prompts`);
+      if (typeof p.domainMatch === "number")
+        bits.push(`<b>${p.domainMatch}%</b> of its words are in your learned vocabulary`);
+      if (typeof p.lengthZ === "number" && Math.abs(p.lengthZ) >= 1.5)
+        bits.push(
+          `${p.lengthZ > 0 ? "Longer" : "Shorter"} than you usually write (~${p.typicalLength} words typical)`
+        );
+      if (bits.length)
+        personal = `<div class="pc-panel-personal">${bits.map((b) => `<div>◆ ${b}</div>`).join("")}</div>`;
+    }
     panelEl.innerHTML =
       `<div class="pc-panel-head">Prompt health <b>${lastHealth.total}</b>/100</div>` +
       rows +
+      personal +
       `<button class="pc-compile">⚡ Compile into a structured prompt</button>` +
-      `<div class="pc-panel-foot">Scored locally against prompt-engineering best practices. Compile uses your API key.</div>`;
+      `<div class="pc-panel-foot">Scored locally: best-practice checks + calibration learned from your own prompts. Compile uses your API key.</div>`;
     panelEl.querySelector(".pc-compile").addEventListener("click", compileDraft);
   }
 

@@ -198,6 +198,23 @@ await test("health ring scores low on a bare draft, high on a structured one", a
   assert.ok(high >= 80, `structured prompt should score high, got ${high}`);
 });
 
+await test("health panel shows calibration learned from the user's own prompts", async () => {
+  await fresh();
+  await page.evaluate(() => {
+    window.__pcStore.local.pc_lab = [15, 25, 35, 45, 55, 65].map((h) => ({ t: 1, words: 12, health: h, missing: [] }));
+    window.__pcStore.local.pc_lengths = [10, 11, 9, 12, 10, 10];
+  });
+  await typeText(
+    "You are a career coach. Rewrite my resume summary for a data science internship. Return three bullets.",
+    8
+  );
+  await page.waitForSelector(".pc-ring", { state: "visible", timeout: 4000 });
+  await page.locator(".pc-ring").click();
+  await page.waitForSelector(".pc-panel-personal", { state: "visible", timeout: 4000 });
+  const t = await page.locator(".pc-panel-personal").innerText();
+  assert.ok(/Better than \d+% of your last 6 prompts/.test(t), `personal percentile line missing, got ${JSON.stringify(t)}`);
+});
+
 await test("ring click opens the panel naming missing dimensions", async () => {
   await fresh();
   await typeText("fix my resume idk make it good");

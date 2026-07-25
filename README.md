@@ -38,8 +38,13 @@ nothing. PromptComplete turns it into an IDE for prompts:
   data scientist, engineer, writer). It runs the *same* on-device learning
   pipeline the composer uses, so completions are genuinely *yours*, not a fixed
   dictionary.
-- **Prompt Health ring** — a live score of your draft against prompt-engineering
-  best practices, with the missing ingredient named.
+- **Prompt Health ring** — a live score of your draft, from two layers: static
+  best-practice checks (the prior) plus a **calibration learned from your own
+  prompts** — the panel tells you "better than 72% of your last 40 prompts",
+  how much of the draft is in *your* learned vocabulary, and whether it's
+  unusually long or short *for you* (empirical distributions, updated
+  automatically as you send). A vocabulary-sanity check keeps the meter honest
+  on garbled or random text.
 - **Intent Compiler** — one click turns a rough draft ("fix my resume idk make it
   good") into a structured, Claude-grade prompt.
 - **`/` scaffold palette** — 16 curated prompt patterns (roles, XML tags, examples,
@@ -133,8 +138,8 @@ Anthropic API key. Ghost completions default to `claude-haiku-4-5` (latency);
 the Intent Compiler defaults to `claude-sonnet-5` (quality). Your key lives in
 your browser's extension storage and is sent only to `api.anthropic.com`.
 
-Run the tests: `npm test` (67 unit tests, zero dependencies) and
-`npm run test:e2e` (37 Playwright assertions: every keyboard interaction in
+Run the tests: `npm test` (70 unit tests, zero dependencies) and
+`npm run test:e2e` (38 Playwright assertions: every keyboard interaction in
 the demo composer, all three extension pages, and a real-Chrome load of the
 unpacked extension with its MV3 service worker). `npm run bench` reproduces
 every performance and accuracy number in
