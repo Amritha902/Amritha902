@@ -32,6 +32,12 @@ nothing. PromptComplete turns it into an IDE for prompts:
   the ghost *leads* instead of going silent: it proposes the next missing
   prompt-engineering ingredient (`— be specific: {exact ask, numbers,
   constraints}.`), and each accept walks you to the next one.
+- **Personalized from day one** — the model learns from every prompt you send,
+  but you don't have to wait: **Settings → "Teach it my style"** trains it
+  instantly from prompts you paste (or a one-click starter pack for your role —
+  data scientist, engineer, writer). It runs the *same* on-device learning
+  pipeline the composer uses, so completions are genuinely *yours*, not a fixed
+  dictionary.
 - **Prompt Health ring** — a live score of your draft against prompt-engineering
   best practices, with the missing ingredient named.
 - **Intent Compiler** — one click turns a rough draft ("fix my resume idk make it
@@ -128,7 +134,7 @@ the Intent Compiler defaults to `claude-sonnet-5` (quality). Your key lives in
 your browser's extension storage and is sent only to `api.anthropic.com`.
 
 Run the tests: `npm test` (67 unit tests, zero dependencies) and
-`npm run test:e2e` (34 Playwright assertions: every keyboard interaction in
+`npm run test:e2e` (37 Playwright assertions: every keyboard interaction in
 the demo composer, all three extension pages, and a real-Chrome load of the
 unpacked extension with its MV3 service worker). `npm run bench` reproduces
 every performance and accuracy number in

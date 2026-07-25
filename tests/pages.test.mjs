@@ -174,6 +174,29 @@ await test("options: model import replaces the model; junk is rejected", async (
   await page.context().close();
 });
 
+await test("options: 'Teach it my style' trains the real model from pasted prompts", async () => {
+  const { page, errors } = await openPage("options/options.html");
+  // A starter pack fills the textarea, then teaching runs the real pipeline.
+  await page.click('.pack[data-pack="ds"]');
+  const filled = await page.inputValue("#teach-text");
+  assert.ok(filled.split("\n").length >= 8, "pack should fill several prompts");
+  await page.click("#teach-btn");
+  await page.waitForFunction(() => /Learned your style/.test(document.getElementById("teach-result").textContent), {
+    timeout: 6000,
+  });
+  const model = await page.evaluate(() => ({
+    grams: Object.keys(window.__pcStore.local.pc_ngrams || {}).length,
+    words: Object.keys(window.__pcStore.local.pc_words || {}).length,
+  }));
+  assert.ok(model.grams > 20, `bootstrap should index n-grams, got ${model.grams}`);
+  assert.ok(model.words > 20, `bootstrap should build vocabulary, got ${model.words}`);
+  // And the trained model actually predicts: "analyze the churn " → "cohort"/"dataset".
+  const pred = await page.evaluate(() => window.PromptComplete.getSuggestion("analyze the churn ", { mode: "local" }));
+  assert.ok(pred && pred.length > 0, `trained model should predict, got ${JSON.stringify(pred)}`);
+  assert.equal(errors.length, 0, `page errors: ${errors.join("; ")}`);
+  await page.context().close();
+});
+
 // --- Popup -------------------------------------------------------------------
 
 await test("popup: toggles persist and links navigate", async () => {

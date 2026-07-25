@@ -115,12 +115,13 @@ its trigger from a measured 10.7% share).
   keystroke savings **26.4%** from the dictionary tier alone (personal
   vocabulary and phrase judgment add on top for a returning user).
 - The whole local path is comfortably under a millisecond per keystroke —
-  the 220ms debounce, not compute, dominates time-to-ghost.
+  the 80ms debounce, not compute, dominates time-to-ghost (and a keystroke
+  matching the ghost skips even that via type-through).
 
 ## Reproduce
 
 ```
 npm test          # 67 unit tests (model, repair, trie, BK-tree)
-npm run test:e2e  # 33 real-browser assertions
+npm run test:e2e  # 37 real-browser assertions
 npm run bench     # every number in this document
 ```

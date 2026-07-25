@@ -153,3 +153,100 @@ document.getElementById("import-file").addEventListener("change", async (e) => {
     modelStatus("Import failed: " + err.message, false);
   }
 });
+
+// --- Personalize: teach the model your style upfront ------------------------
+// Runs the REAL suggestion pipeline (window.PromptComplete.learn, loaded from
+// src/suggest.js) over pasted prompts, so bootstrap training is byte-identical
+// to what happens when you send a prompt in the composer. Turns a cold-start
+// install into one that already knows the user's vocabulary and phrasing.
+const STARTER_PACKS = {
+  ds: [
+    "analyze the churn dataset and plot retention by cohort over the last six months",
+    "explain gradient descent with a small worked example and the update rule",
+    "summarize this paper in three bullet points for my study notes",
+    "write python code to load the csv, clean missing values, and show the correlation matrix",
+    "compare logistic regression and random forests for this classification problem",
+    "help me structure my resume for a data science internship application",
+    "what are the assumptions behind linear regression and how do i check them",
+    "give me a study plan to prepare for the machine learning exam next week",
+    "rewrite this prompt to be clearer and more specific for better results",
+    "create a pandas snippet to group by region and compute the monthly average",
+  ],
+  eng: [
+    "review this pull request for bugs, edge cases, and readability",
+    "explain why this function is slow and suggest a faster approach",
+    "write unit tests for this module covering the main edge cases",
+    "refactor this code to reduce duplication without changing behavior",
+    "debug this error and explain the root cause step by step",
+    "design a rest api for a todo app with the main endpoints and status codes",
+    "write a clear commit message for the changes described below",
+    "compare these two approaches and recommend one with the trade-offs",
+    "add error handling to this function and explain each case",
+    "document this function with a concise docstring and one usage example",
+  ],
+  writer: [
+    "write a friendly but professional email to my manager about the deadline",
+    "rewrite this paragraph to be more concise and clear while keeping my voice",
+    "draft a short linkedin post announcing our product launch",
+    "proofread the following text for grammar, tone, and flow",
+    "turn these rough notes into a polished summary for the team",
+    "suggest three subject lines for this newsletter and explain each",
+    "make this message warmer without losing the key ask",
+    "outline a blog post about productivity with a clear structure",
+    "summarize this long thread into the key decisions and next steps",
+    "give me a concise, confident reply to this client email",
+  ],
+};
+
+const teachText = $("teach-text");
+const teachBtn = $("teach-btn");
+const teachResult = $("teach-result");
+
+function teachStatus(msg, ok) {
+  teachResult.textContent = msg;
+  teachResult.className = "result " + (ok ? "ok" : "err");
+  if (ok) setTimeout(() => (teachResult.textContent = ""), 4000);
+}
+
+document.querySelectorAll(".pack").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const lines = STARTER_PACKS[btn.dataset.pack] || [];
+    const existing = teachText.value.trim();
+    teachText.value = (existing ? existing + "\n" : "") + lines.join("\n");
+    teachText.focus();
+  });
+});
+
+if (teachBtn) {
+  teachBtn.addEventListener("click", async () => {
+    if (!window.PromptComplete || !window.PromptComplete.learn) {
+      teachStatus("Engine not loaded — reopen this page.", false);
+      return;
+    }
+    const prompts = teachText.value
+      .split("\n")
+      .map((s) => s.trim())
+      .filter((s) => s.length >= 8);
+    if (!prompts.length) {
+      teachStatus("Add a few prompts first (one per line).", false);
+      return;
+    }
+    teachBtn.disabled = true;
+    teachStatus("Learning…", true);
+    // Train each prompt through the real pipeline. Learn twice so a
+    // one-paste bootstrap clears the support≥2 gate the runtime model uses.
+    let learned = 0;
+    for (const p of prompts) {
+      try {
+        await window.PromptComplete.learn(p);
+        await window.PromptComplete.learn(p);
+        learned++;
+      } catch (_) {
+        /* skip a bad line, keep going */
+      }
+    }
+    teachBtn.disabled = false;
+    teachStatus(`Learned your style from ${learned} prompt${learned === 1 ? "" : "s"} ✓`, true);
+    teachText.value = "";
+  });
+}

@@ -79,6 +79,31 @@
       </section>
 
       <section>
+        <h2>Personalize it to you</h2>
+        <p class="note" style="margin-top: 0">
+          PromptComplete gets smarter as you use it, but you can teach it your
+          style right now. Paste a few prompts you've written (or the kind of
+          things you ask an AI) — one per line — and it learns your vocabulary
+          and phrasing immediately. Nothing leaves this browser.
+        </p>
+        <div class="actions" style="flex-wrap: wrap; gap: 6px">
+          <span class="note" style="margin: 0">Or start from a pack:</span>
+          <button type="button" class="pack" data-pack="ds">Data science student</button>
+          <button type="button" class="pack" data-pack="eng">Software engineer</button>
+          <button type="button" class="pack" data-pack="writer">Writer / comms</button>
+        </div>
+        <textarea id="teach-text" rows="6" placeholder="write an email to my professor about the deadline extension
+analyze the churn dataset and plot retention by cohort
+explain gradient descent with a worked example
+summarize this paper in three bullet points for my study notes"
+          style="width: 100%; box-sizing: border-box; margin-top: 8px; font: inherit; padding: 8px; border: 1px solid var(--line, #e3dfd3); border-radius: 8px; resize: vertical"></textarea>
+        <div class="actions">
+          <button id="teach-btn" type="button">Teach it my style</button>
+          <span id="teach-result" class="result"></span>
+        </div>
+      </section>
+
+      <section>
         <h2>Your personal model</h2>
         <p class="note" style="margin-top: 0">
           The suggestion model trained on your prompts lives only in this
@@ -97,6 +122,13 @@
         <span id="saved" class="saved">Saved ✓</span>
       </footer>
     </main>
+    <!-- The real suggestion pipeline, so "Teach it" trains EXACTLY as the
+         extension does at runtime (same learn() → same model). -->
+    <script src="../src/lexicon.js"></script>
+    <script src="../src/trie.js"></script>
+    <script src="../src/bktree.js"></script>
+    <script src="../src/repair.js"></script>
+    <script src="../src/suggest.js"></script>
     <script src="options.js"></script>
   </body>
 </html>
