@@ -563,8 +563,22 @@
 
     const rect = caretRect(el) || el.getBoundingClientRect();
     card.style.left = Math.max(8, Math.min(rect.left, innerWidth - 380)) + "px";
-    card.style.top = Math.min(rect.top + (rect.height || 20) + 10, innerHeight - 60) + "px";
+    // Measure the card, then place it below the caret — but flip ABOVE when it
+    // would overflow the viewport bottom, so the apply button is always
+    // reachable (a tall card near the bottom of the page otherwise runs off).
+    card.style.visibility = "hidden";
+    card.style.top = "0px";
     card.style.display = "block";
+    const h = card.offsetHeight;
+    const below = rect.top + (rect.height || 20) + 10;
+    let top;
+    if (below + h > innerHeight - 8 && rect.top - h - 10 >= 8) {
+      top = rect.top - h - 10; // flip above
+    } else {
+      top = Math.min(below, innerHeight - h - 8); // keep below, but fully on-screen
+    }
+    card.style.top = Math.max(8, top) + "px";
+    card.style.visibility = "";
     // Deliberately NOT auto-focused: stealing focus would hijack the user's
     // next keystrokes (and Enter would apply instead of send). Clicking an
     // input or a chip engages the card; typing in the composer dismisses it.
