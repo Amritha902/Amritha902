@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>PromptComplete — store screenshot harness</title>
+    <link rel="stylesheet" href="../src/overlay.css" />
+    <style>
+      /* A clean, unbranded chat surface used ONLY to capture Chrome Web Store
+         screenshots at 1280x800. Runs the real extension scripts, so every
+         screenshot shows genuine product behaviour — nothing mocked up. */
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        background: #f3f0e8;
+        font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: #2c2822;
+      }
+      .caption {
+        padding: 26px 40px 0;
+        text-align: center;
+      }
+      .caption h2 {
+        margin: 0 0 8px;
+        font: 500 30px/1.2 Georgia, "Times New Roman", serif;
+        letter-spacing: -0.01em;
+      }
+      .caption h2 b { color: #cc785c; font-weight: 500; font-style: italic; }
+      .caption p {
+        margin: 0 auto;
+        max-width: 60ch;
+        color: #6f6a62;
+        font-size: 15px;
+      }
+      /* Top-aligned so caret-anchored overlays (health panel, / palette,
+         fill card) have vertical room below the composer and never clip. */
+      .stage {
+        flex: 1;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 22px 40px 40px;
+      }
+      .window {
+        width: min(820px, 100%);
+        background: #fdfcfa;
+        border: 1px solid #e6e1d5;
+        border-radius: 16px;
+        box-shadow: 0 18px 48px -18px rgba(60, 45, 35, 0.3);
+        overflow: hidden;
+      }
+      .titlebar {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 11px 14px;
+        border-bottom: 1px solid #efeadf;
+        background: #faf7f1;
+      }
+      .dot { width: 11px; height: 11px; border-radius: 50%; background: #e0dbd0; }
+      .titlebar span {
+        margin-left: 8px;
+        font-size: 12px;
+        color: #a49f94;
+      }
+      .thread { padding: 26px 28px 8px; }
+      .greet {
+        font: 400 26px/1.2 Georgia, serif;
+        color: #5e5a4e;
+        margin-bottom: 22px;
+      }
+      .greet .star { color: #cc785c; margin-right: 10px; }
+      .composer { padding: 0 28px 24px; }
+      .box {
+        border: 1px solid #e3dfd3;
+        border-radius: 16px;
+        padding: 16px 18px 12px;
+        background: #fff;
+      }
+      .input {
+        min-height: 48px;
+        outline: none;
+        font-size: 17px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+      }
+      .input:empty::before { content: "How can I help you today?"; color: #a9a498; }
+      .bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 12px;
+        color: #a9a498;
+        font-size: 12.5px;
+      }
+      .send {
+        width: 32px; height: 32px; border: none; border-radius: 10px;
+        background: linear-gradient(135deg, #cc785c, #b8613f); color: #fff; font-size: 15px;
+      }
+      kbd {
+        background: #f0ece2; border: 1px solid #e3dfd3; border-radius: 5px;
+        padding: 1px 6px; font: 12px ui-monospace, Menlo, monospace; color: #4a463f;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="caption">
+      <h2 id="cap-title">Ghost text that <b>finishes your prompt</b></h2>
+      <p id="cap-sub">Press <kbd>Tab</kbd> to accept — like Smart Compose, for your AI chats.</p>
+    </div>
+    <div class="stage">
+      <div class="window">
+        <div class="titlebar">
+          <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          <span>New chat</span>
+        </div>
+        <div class="thread">
+          <div class="greet"><span class="star">✳</span>Good morning</div>
+        </div>
+        <div class="composer">
+          <div class="box">
+            <div class="input" contenteditable="true" role="textbox" aria-label="Message input"></div>
+            <div class="bar">
+              <span>PromptComplete active</span>
+              <button class="send" aria-label="Send">↑</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="harness.js"></script>
+    <script src="../src/lexicon.js"></script>
+    <script src="../src/trie.js"></script>
+    <script src="../src/bktree.js"></script>
+    <script src="../src/templates.js"></script>
+    <script src="../src/suggest.js"></script>
+    <script src="../src/health.js"></script>
+    <script src="../src/palette.js"></script>
+    <script src="../src/repair.js"></script>
+    <script src="../src/content.js"></script>
+    <script>
+      // Seed a personal model so the "learns your words" shot is genuine.
+      window.addEventListener("load", async () => {
+        if (!window.PromptComplete) return;
+        for (let i = 0; i < 3; i++) {
+          await window.PromptComplete.learn(
+            "analyze the sales dataset and plot the monthly revenue trend by region"
+          );
+        }
+        await window.PromptComplete.learn("hello can you help me with my report");
+        await window.PromptComplete.learn("hello i need a summary of this paper");
+        window.__seeded = true;
+      });
+      // Screenshot script sets the caption per shot.
+      window.setCaption = (title, sub) => {
+        document.getElementById("cap-title").innerHTML = title;
+        document.getElementById("cap-sub").innerHTML = sub;
+      };
+    </script>
+  </body>
+</html>

@@ -229,6 +229,21 @@
     return null;
   }
 
+  /**
+   * True when the draft's final word is one we cannot read: alphabetic, long
+   * enough to judge, and absent from both the shipped lexicon and the user's
+   * own learned vocabulary (so domain jargon they actually use still counts
+   * as readable). Used to keep curated scaffolds off garbled text.
+   */
+  function endsInUnknownWord(text) {
+    const m = text.match(/([a-zA-Z']{2,})\s*$/);
+    if (!m) return false;
+    const w = m[1].toLowerCase();
+    if (window.PromptRepair && window.PromptRepair.isKnown(w)) return false;
+    if (wordsCache && wordsCache[w] >= 2) return false; // the user's own word
+    return !!window.PromptRepair; // without a lexicon we cannot judge; allow
+  }
+
   // Generic last-line guard for every tier: reject a candidate whose opening
   // words repeat the tail of what the user already typed ("…to my manager" +
   // " to {recipient}…").
@@ -651,8 +666,17 @@
     if (text.trim().length < 2) return out;
     const hist = await historySuggestion(text);
     if (hist) out.push(hist);
-    push(templateSuggestion(text));
-    push(vectorTemplateSuggestion(text));
+    // Curated scaffolds must not be bolted onto text we cannot read. The IR
+    // tier matches a lead-in by cosine similarity and would happily ignore
+    // unreadable trailing words — "write an email zzz qqq" still matched the
+    // email template, producing "…zzz qqq to {recipient} about {topic}".
+    // If the draft ends in a word neither the lexicon nor the user's own
+    // vocabulary knows, the user is mid-typo or mid-something-else: the
+    // repair tier owns that moment, not the template tiers.
+    if (!endsInUnknownWord(text)) {
+      push(templateSuggestion(text));
+      push(vectorTemplateSuggestion(text));
+    }
     // Last resort: no prediction available → lead the user forward instead.
     if (!out.length) push(leadingSuggestion(text));
     return out;

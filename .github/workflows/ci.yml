@@ -34,6 +34,8 @@ jobs:
         run: node tools/pack.mjs
       - name: E2E assertions (every advertised interaction)
         run: node tests/e2e.test.mjs
+      - name: Edge cases (long prompts, paste, unicode, caret, bounds)
+        run: node tests/edge.test.mjs
       - name: E2E pages (dashboard, options, popup)
         run: node tests/pages.test.mjs
       - name: Real-extension smoke test (MV3 worker in Chrome)
