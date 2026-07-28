@@ -1,12 +1,20 @@
 name: Release
 
-# Cut a public release whenever a version tag is pushed. The uploadable
-# extension package is BUILT here rather than committed, so the asset always
-# matches the tagged source exactly.
+# Publish a downloadable extension package. Two ways in:
+#   - push a v* tag, or
+#   - run this workflow manually and give it a version.
+# The package is BUILT here rather than committed, so the published asset
+# always matches the source it was cut from.
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (without the leading v), e.g. 1.0.0"
+        required: true
+        default: "1.0.0"
 
 permissions:
   contents: write
@@ -20,6 +28,22 @@ jobs:
         with:
           node-version: 22
 
+      - name: Resolve the version being released
+        id: v
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          MANIFEST=$(node -p "require('./manifest.json').version")
+          if [ "$MANIFEST" != "$VERSION" ]; then
+            echo "::error::manifest.json is $MANIFEST but releasing $VERSION"
+            exit 1
+          fi
+
       - name: Verify the package before publishing it
         run: npm test
 
@@ -32,22 +56,20 @@ jobs:
       - name: Publish the release with the package attached
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+          TAG: ${{ steps.v.outputs.tag }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          gh release create "$GITHUB_REF_NAME" \
-            "dist/promptcomplete-${VERSION}.zip" \
-            --title "PromptComplete $GITHUB_REF_NAME" \
-            --notes "$(cat <<'NOTES'
+          cat > notes.md <<NOTES
           Inline ghost-text autocomplete for your prompts in Claude and ChatGPT —
           it learns how *you* write, entirely on your device.
 
-          ## Install (30 seconds, no store needed)
+          ## Install (30 seconds, no store account needed)
 
-          1. Download `promptcomplete-VERSION.zip` below and unzip it.
-          2. Open `chrome://extensions` (or `edge://extensions`).
+          1. Download \`promptcomplete-${VERSION}.zip\` below and unzip it.
+          2. Open \`chrome://extensions\` (or \`edge://extensions\`).
           3. Turn on **Developer mode**, click **Load unpacked**, and select the
              unzipped folder.
-          4. Open [claude.ai](https://claude.ai) and start typing — press `Tab`
+          4. Open [claude.ai](https://claude.ai) and start typing — press \`Tab\`
              to accept a suggestion.
 
           Works in any Chromium browser: Chrome, Edge, Brave, Arc.
@@ -57,11 +79,17 @@ jobs:
           - Ghost-text completion that learns your own vocabulary and phrasing
           - Grammar-aware completions, whole-phrase prediction, typo repair
           - A live prompt-quality score calibrated against your own history
-          - `/` scaffold palette and a local Prompt Lab dashboard
+          - \`/\` scaffold palette and a local Prompt Lab dashboard
           - **Local by default** — nothing leaves your browser unless you opt in
             to AI mode with your own API key
 
           Full details in the [README](https://github.com/Amritha902/promptcomplete#readme)
           and [privacy policy](https://github.com/Amritha902/promptcomplete/blob/main/PRIVACY.md).
           NOTES
-          )"
+
+          # --target creates the tag from this commit when it does not exist yet.
+          gh release create "$TAG" \
+            "dist/promptcomplete-${VERSION}.zip" \
+            --target "$GITHUB_SHA" \
+            --title "PromptComplete $TAG" \
+            --notes-file notes.md
