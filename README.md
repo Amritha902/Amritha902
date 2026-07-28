@@ -125,7 +125,22 @@ Full design + formulas: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 | `/` at start | Open the scaffold palette |
 | `Tab` (after scaffold) | Jump to next `{{placeholder}}` |
 
-## Install (developer mode)
+## Install
+
+**From source (free, works today)**
+
+1. Download the latest `promptcomplete-*.zip` from
+   [Releases](https://github.com/Amritha902/promptcomplete/releases), or clone
+   this repo and run `node tools/gen-icons.mjs && node tools/pack.mjs`.
+2. Unzip it.
+3. `chrome://extensions` (or `edge://extensions`) → enable **Developer mode** →
+   **Load unpacked** → select the unzipped folder.
+4. Open [claude.ai](https://claude.ai) and start typing.
+
+Store listings are prepared in [`store/`](store/) — see `LISTING.md` (Chrome)
+and `EDGE-LISTING.md` (Edge, free to publish).
+
+### Building it yourself
 
 1. Clone this repo.
 2. `node tools/gen-icons.mjs` (one time).
