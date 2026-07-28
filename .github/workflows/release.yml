@@ -1,0 +1,67 @@
+name: Release
+
+# Cut a public release whenever a version tag is pushed. The uploadable
+# extension package is BUILT here rather than committed, so the asset always
+# matches the tagged source exactly.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify the package before publishing it
+        run: npm test
+
+      - name: Build the extension package
+        run: |
+          node tools/gen-icons.mjs
+          node tools/pack.mjs
+          ls -la dist/
+
+      - name: Publish the release with the package attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/promptcomplete-${VERSION}.zip" \
+            --title "PromptComplete $GITHUB_REF_NAME" \
+            --notes "$(cat <<'NOTES'
+          Inline ghost-text autocomplete for your prompts in Claude and ChatGPT —
+          it learns how *you* write, entirely on your device.
+
+          ## Install (30 seconds, no store needed)
+
+          1. Download `promptcomplete-VERSION.zip` below and unzip it.
+          2. Open `chrome://extensions` (or `edge://extensions`).
+          3. Turn on **Developer mode**, click **Load unpacked**, and select the
+             unzipped folder.
+          4. Open [claude.ai](https://claude.ai) and start typing — press `Tab`
+             to accept a suggestion.
+
+          Works in any Chromium browser: Chrome, Edge, Brave, Arc.
+
+          ## What's in it
+
+          - Ghost-text completion that learns your own vocabulary and phrasing
+          - Grammar-aware completions, whole-phrase prediction, typo repair
+          - A live prompt-quality score calibrated against your own history
+          - `/` scaffold palette and a local Prompt Lab dashboard
+          - **Local by default** — nothing leaves your browser unless you opt in
+            to AI mode with your own API key
+
+          Full details in the [README](https://github.com/Amritha902/promptcomplete#readme)
+          and [privacy policy](https://github.com/Amritha902/promptcomplete/blob/main/PRIVACY.md).
+          NOTES
+          )"
